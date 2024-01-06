@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 
 #include "os.h"
+#include "vk_dispatch.h"
 
 class VulkanEngine {
 public:
@@ -18,6 +19,12 @@ private:
 	HMODULE lib;
 #endif
 	int link();
+
+	instance_dispatch idisp;
+	void load_instance_pfns();
+
+	VkInstance inst;
+	void create_instance();
 };
 
 #endif /* VK_ENGINE_H */
