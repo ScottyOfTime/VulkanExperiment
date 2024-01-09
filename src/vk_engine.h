@@ -6,6 +6,10 @@
 #include "os.h"
 #include "vk_dispatch.h"
 
+struct queue_family_indices {
+	int32_t graphicsFamily = -1;
+};
+
 class VulkanEngine {
 public:
 	void init();
@@ -25,6 +29,14 @@ private:
 
 	VkInstance inst;
 	void create_instance();
+
+	VkPhysicalDevice physdev = NULL;
+	void select_physical_device();
+	queue_family_indices find_queue_families(VkPhysicalDevice physdev);
+
+	VkDevice dev = NULL;
+	device_dispatch ddisp;
+	void create_device();
 };
 
 #endif /* VK_ENGINE_H */
