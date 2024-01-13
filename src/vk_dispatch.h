@@ -8,12 +8,18 @@ struct instance_dispatch {
 
 	PFN_vkCreateInstance vkCreateInstance;
 	PFN_vkDestroyInstance vkDestroyInstance;
+
+	PFN_vkCreateDevice vkCreateDevice;
+
+	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
+
 	PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
 	PFN_vkGetPhysicalDeviceProperties2 vkGetPhysicalDeviceProperties2;
 	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
 
 	PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
-	PFN_vkCreateDevice vkCreateDevice;
+
+	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
 };
 
 void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst);

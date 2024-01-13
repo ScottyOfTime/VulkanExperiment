@@ -18,7 +18,10 @@ int main(int argc, char* argv[])
 	}
 
 	VulkanEngine *vk = new VulkanEngine;
-	vk->init();
+	if (vk->init(win) != ENGINE_SUCCESS) {
+		fprintf(stderr, "[Main] Vulkan engine creation failed.\n");
+		goto cleanup;
+	}
 	
 	int quit = 0;
 	SDL_Event e;
@@ -31,7 +34,9 @@ int main(int argc, char* argv[])
 		}
 	}
 
+cleanup:
 	vk->deinit();
 	delete vk;
+	SDL_DestroyWindow(win);
 	return 0;
 }
