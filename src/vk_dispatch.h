@@ -14,12 +14,14 @@ struct instance_dispatch {
 	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
 
 	PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
+	PFN_vkEnumerateDeviceExtensionProperties vkEnumerateDeviceExtensionProperties;
 	PFN_vkGetPhysicalDeviceProperties2 vkGetPhysicalDeviceProperties2;
 	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
 
 	PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
-
 	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+	PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
+	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
 };
 
 void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst);

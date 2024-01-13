@@ -2,6 +2,7 @@
 #define VK_ENGINE_H
 
 #include <stdio.h>
+#include <string.h>
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <array>
@@ -10,6 +11,10 @@
 #include "vk_dispatch.h"
 #include "SDL.h"
 #include "SDL_vulkan.h"
+
+/*---------------------------
+ | MACROS
+ ---------------------------*/
 
 #define EngineResult 	uint32_t
 #define ENGINE_SUCCESS	0
@@ -32,6 +37,10 @@
 		return ENGINE_FAILURE; \
 	}
 
+/*---------------------------
+ | CONST ARRAYS AND STRUCTS
+ ---------------------------*/
+
 const std::array<const char*, 1> vk_inst_extensions = {
 	"VK_KHR_surface"
 };
@@ -43,6 +52,10 @@ const std::array<const char*, 1> vk_dev_extensions = {
 struct queue_family_indices {
 	int32_t graphicsFamily = -1;
 };
+
+/*---------------------------
+ | VULKANENGINE CLASS
+ ---------------------------*/
 
 class VulkanEngine {
 public:
@@ -66,9 +79,13 @@ private:
 	EngineResult create_instance();
 
 	VkPhysicalDevice physdev = NULL;
+	VkSurfaceCapabilitiesKHR surfcaps;
+	std::vector<VkSurfaceFormatKHR> fmts;
+	std::vector<VkPresentModeKHR> present_modes;
 	EngineResult select_physical_device();
 	EngineResult find_queue_families(VkPhysicalDevice physdev,
 			queue_family_indices *qfi);
+	uint32_t device_suitable(VkPhysicalDevice dev);
 
 	VkDevice dev = NULL;
 	device_dispatch ddisp;
@@ -77,8 +94,9 @@ private:
 	VkSurfaceKHR surf = NULL;
 	EngineResult create_surface();
 
-	VkSwapchainKHR swapchain;
-	VkFormat swapchainFormat;
+	
+	VkSwapchainKHR swapchain = NULL;
+	VkFormat swapchainFmt;
 	std::vector<VkImage> swapchainImgs;
 	std::vector<VkImageView> swapchainImgViews;
 	VkExtent2D swapchaintExtent;

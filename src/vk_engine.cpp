@@ -1,6 +1,5 @@
 #include "vk_engine.h"
 
-
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	#define load_proc_addr GetProcAddress
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
@@ -12,26 +11,26 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 
 	ENGINE_RUN_FN(link);
 	ENGINE_RUN_FN(create_instance);
+	ENGINE_RUN_FN(create_surface);
 	ENGINE_RUN_FN(select_physical_device);
 	ENGINE_RUN_FN(create_device);
-	ENGINE_RUN_FN(create_surface);
 
 	return ENGINE_SUCCESS;
 }
 
 void VulkanEngine::deinit() {
-	if (surf != NULL) {	
-		ENGINE_MESSAGE("Destroying surface.");
-		idisp.vkDestroySurfaceKHR(inst, surf, NULL);
-	}
-
 	if (dev != NULL) {
 		ENGINE_MESSAGE("Destroying logical device.");
 		ddisp.vkDestroyDevice(dev, NULL);
 	}
 
-	if (dev != NULL) {
-		ENGINE_MESSAGE("Destroying instance.")
+	if (surf != NULL) {
+		ENGINE_MESSAGE("Destroying surface.");
+		idisp.vkDestroySurfaceKHR(inst, surf, NULL);
+	}
+
+	if (inst != NULL) {
+		ENGINE_MESSAGE("Destroying instance.");
 		idisp.vkDestroyInstance(inst, NULL);
 	}
 
@@ -111,14 +110,76 @@ EngineResult VulkanEngine::create_instance() {
 	return ENGINE_SUCCESS;
 }
 
-static int device_suitable(VkPhysicalDevice dev, instance_dispatch* idisp) {
+uint32_t VulkanEngine::device_suitable(VkPhysicalDevice dev) {
+	fmts.clear();
+	present_modes.clear();
+
 	VkPhysicalDeviceProperties2 devprops = {};
 	devprops.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-	idisp->vkGetPhysicalDeviceProperties2(dev, &devprops);
+	idisp.vkGetPhysicalDeviceProperties2(dev, &devprops);
 	VkPhysicalDeviceFeatures devfeats = {};
-	idisp->vkGetPhysicalDeviceFeatures(dev, &devfeats);
+	idisp.vkGetPhysicalDeviceFeatures(dev, &devfeats);
 
 	ENGINE_MESSAGE_ARGS("Found device %s: ", devprops.properties.deviceName);
+
+	// Extension support
+	uint32_t ext_count;
+	idisp.vkEnumerateDeviceExtensionProperties(dev, NULL, &ext_count, NULL);
+	if (ext_count == 0) {
+		ENGINE_WARNING("No extension support detected.");
+		return 0;
+	}
+	VkExtensionProperties *exts = (VkExtensionProperties *)malloc(ext_count * sizeof(VkExtensionProperties));
+	if (idisp.vkEnumerateDeviceExtensionProperties(dev, NULL, &ext_count, exts) != VK_SUCCESS) {
+		ENGINE_WARNING("Failed to fetch extension properties.");
+		return 0;
+	}
+
+	for (int i = 0; i < vk_dev_extensions.size(); i++) {
+		uint32_t ext_found = 0;
+		for (int j = 0; i < ext_count; j++) {
+			if (!strcmp(vk_dev_extensions[i], exts[j].extensionName)) {
+				ext_found = 1;
+				break;
+			}
+		}
+		if (!ext_found) {
+			ENGINE_WARNING("Device does not support requested extensions.");
+			return 0;
+		}
+	}
+
+	// Surface formats support
+	uint32_t fmts_count = 0;
+	idisp.vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surf, &fmts_count, NULL);
+	if (fmts_count == 0) {
+		ENGINE_WARNING("No surface formats detected.");
+		return 0;
+	}
+	if (idisp.vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surf, &fmts_count, fmts.data())
+		!= VK_SUCCESS) {
+		ENGINE_WARNING("Failed to fetch physical device surface formats.");
+		return 0;
+	}
+
+	// Surface present modes support
+	uint32_t present_modes_count = 0;
+	idisp.vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surf, &present_modes_count, NULL);
+	if (present_modes_count == 0) {
+		ENGINE_WARNING("No surface present modes detected.");
+		return 0;
+	}
+	if (idisp.vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surf, &present_modes_count, present_modes.data())
+		!= VK_SUCCESS) {
+		ENGINE_WARNING("Failed to fetch physical device surface present modes.");
+		return 0;
+	}
+
+	// Surface capabilities
+	if (idisp.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(dev, surf, &surfcaps) != VK_SUCCESS) {
+		ENGINE_WARNING("Could not query for physical device surface capabilities.\n");
+		return 0;
+	}
 
 	return devprops.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
 		devfeats.geometryShader;
@@ -135,11 +196,15 @@ EngineResult VulkanEngine::select_physical_device() {
 	}
 
 	VkPhysicalDevice *devs = (VkPhysicalDevice*)malloc(numdevs * sizeof(VkPhysicalDevice));
-	idisp.vkEnumeratePhysicalDevices(inst, &numdevs, devs);
+	if (idisp.vkEnumeratePhysicalDevices(inst, &numdevs, devs) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to enumerate physical devices.");
+		free(devs);
+		return ENGINE_FAILURE;
+	}
 
 	// Finds first suitable device which may not be the best
 	for (int i = 0; i < numdevs; i++) {
-		if (device_suitable(devs[i], &idisp)) {
+		if (device_suitable(devs[i])) {
 			physdev = devs[i];
 			break;
 		}
@@ -237,6 +302,12 @@ EngineResult VulkanEngine::create_surface() {
 	return ENGINE_SUCCESS;
 }
 
-EngineResult VulkanEngine::create_swapchain() {
+/*EngineResult VulkanEngine::create_swapchain() {
+	VkSwapchainCreateInfoKHR ci;
+
+	if (ddisp->vkCreateSwapchainKHR(#device, #pCreateInfo, #pAllocator, &swapchain) != VK_SUCCESS) {
+		ENGINE_ERROR("Could not create swapchain.");
+		return ENGINE_FAILURE;
+	}
 	return ENGINE_SUCCESS;
-}
+}*/
