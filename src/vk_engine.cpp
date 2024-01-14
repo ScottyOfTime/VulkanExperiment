@@ -21,6 +21,10 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 
 void VulkanEngine::deinit() {
 	if (swapchain != NULL) {
+		ENGINE_MESSAGE("Destroying swapchain image views.");
+		for (int i = 0; i < swapchainImgViews.size(); i++) {
+			ddisp.vkDestroyImageView(dev, swapchainImgViews[i], NULL);
+		}
 		ENGINE_MESSAGE("Destroying swapchain.");
 		ddisp.vkDestroySwapchainKHR(dev, swapchain, NULL);
 	}
@@ -298,7 +302,7 @@ EngineResult VulkanEngine::create_device() {
 	ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	ci.pNext = NULL;
 	ci.flags = {};
-	ci.queueCreateInfoCount = qci_vec.size();
+	ci.queueCreateInfoCount = static_cast<uint32_t>(qci_vec.size());
 	ci.pQueueCreateInfos = qci_vec.data();
 	ci.enabledLayerCount = 0;
 	ci.enabledExtensionCount = vk_dev_extensions.size();
@@ -313,6 +317,9 @@ EngineResult VulkanEngine::create_device() {
 	
 	load_device_dispatch_table(&ddisp, idisp.vkGetInstanceProcAddr, inst, dev);
 	ENGINE_MESSAGE("Created device and loaded device dispatch table.");
+
+	ddisp.vkGetDeviceQueue(dev, qfi.graphicsFamily, 0, &graphicsQueue);
+	ddisp.vkGetDeviceQueue(dev, qfi.presentFamily, 0, &presentQueue);
 
 	return ENGINE_SUCCESS;
 }
@@ -340,6 +347,7 @@ EngineResult VulkanEngine::create_swapchain() {
 	if (chosen == 0) {
 		chosen_fmt = available_fmts.at(0);
 	}
+	swapchainFmt = chosen_fmt.format;
 
 	// Choose presentation mode from available modes
 	VkPresentModeKHR chosen_present_mode;
@@ -367,13 +375,15 @@ EngineResult VulkanEngine::create_swapchain() {
 		static_cast<uint32_t>(qfi.presentFamily)
 	};
 
+	uint32_t image_count = surfcaps.minImageCount + 1;
+
 	VkSwapchainCreateInfoKHR ci;
 	ci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	ci.pNext = NULL;
 	ci.flags = {};
 	ci.surface = surf;
-	ci.minImageCount = surfcaps.minImageCount + 1;
-	ci.imageFormat = chosen_fmt.format;
+	ci.minImageCount = image_count;
+	ci.imageFormat = swapchainFmt;
 	ci.imageColorSpace = chosen_fmt.colorSpace;
 	ci.imageExtent = swapchainExtent;
 	ci.imageArrayLayers = 1;
@@ -398,5 +408,39 @@ EngineResult VulkanEngine::create_swapchain() {
 		return ENGINE_FAILURE;
 	}
 	ENGINE_MESSAGE("Created swapchain.");
+
+	// Create images
+	ddisp.vkGetSwapchainImagesKHR(dev, swapchain, &image_count, NULL);
+	swapchainImgs.resize(image_count);
+	if (ddisp.vkGetSwapchainImagesKHR(dev, swapchain, &image_count, swapchainImgs.data()) != VK_SUCCESS) {
+		ENGINE_ERROR("Could not retrieve swapchain images.");
+		return ENGINE_FAILURE;
+	}
+
+	// Create image views
+	swapchainImgViews.resize(swapchainImgs.size());
+	for (int i = 0; i < swapchainImgs.size(); i ++) {
+		VkImageViewCreateInfo img_view_ci;
+		img_view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		img_view_ci.pNext = NULL;
+		img_view_ci.flags = {};
+		img_view_ci.image = swapchainImgs[i];
+		img_view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		img_view_ci.format = swapchainFmt;
+		img_view_ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		img_view_ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		img_view_ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		img_view_ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		img_view_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		img_view_ci.subresourceRange.baseMipLevel = 0;
+		img_view_ci.subresourceRange.levelCount = 1;
+		img_view_ci.subresourceRange.baseArrayLayer = 0;
+		img_view_ci.subresourceRange.layerCount = 1;
+		if (ddisp.vkCreateImageView(dev, &img_view_ci, NULL, &swapchainImgViews[i]) != VK_SUCCESS) {
+			ENGINE_ERROR("Could not create swapchain image view.");
+			return ENGINE_FAILURE;
+		}
+	}
+
 	return ENGINE_SUCCESS;
 }

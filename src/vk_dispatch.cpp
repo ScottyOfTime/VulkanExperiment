@@ -29,6 +29,13 @@ void load_device_dispatch_table(device_dispatch *disp, PFN_vkGetInstanceProcAddr
 	disp->vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)vkGetInstanceProcAddr(inst, "vkGetDeviceProcAddr");
 	disp->vkDestroyDevice = (PFN_vkDestroyDevice)disp->vkGetDeviceProcAddr(dev, "vkDestroyDevice");
 
+	disp->vkGetDeviceQueue = (PFN_vkGetDeviceQueue)disp->vkGetDeviceProcAddr(dev, "vkGetDeviceQueue");
+
 	disp->vkCreateSwapchainKHR = (PFN_vkCreateSwapchainKHR)disp->vkGetDeviceProcAddr(dev, "vkCreateSwapchainKHR");
 	disp->vkDestroySwapchainKHR = (PFN_vkDestroySwapchainKHR)disp->vkGetDeviceProcAddr(dev, "vkDestroySwapchainKHR");
+
+	disp->vkGetSwapchainImagesKHR = (PFN_vkGetSwapchainImagesKHR)disp->vkGetDeviceProcAddr(dev, "vkGetSwapchainImagesKHR");
+
+	disp->vkCreateImageView = (PFN_vkCreateImageView)disp->vkGetDeviceProcAddr(dev, "vkCreateImageView");
+	disp->vkDestroyImageView = (PFN_vkDestroyImageView)disp->vkGetDeviceProcAddr(dev, "vkDestroyImageView");
 }

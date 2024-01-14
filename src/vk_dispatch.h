@@ -31,8 +31,15 @@ struct device_dispatch {
 	PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
 	PFN_vkDestroyDevice vkDestroyDevice;
 
+	PFN_vkGetDeviceQueue vkGetDeviceQueue;
+
 	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
 	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
+
+	PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
+
+	PFN_vkCreateImageView vkCreateImageView;
+	PFN_vkDestroyImageView vkDestroyImageView;
 };
 
 void load_device_dispatch_table(device_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

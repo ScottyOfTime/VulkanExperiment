@@ -93,6 +93,8 @@ private:
 	uint32_t device_suitable(VkPhysicalDevice dev);
 
 	VkDevice dev = NULL;
+	VkQueue graphicsQueue;
+	VkQueue presentQueue;
 	device_dispatch ddisp;
 	EngineResult create_device();
 
