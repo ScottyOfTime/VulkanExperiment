@@ -23,8 +23,8 @@
 #define ENGINE_MESSAGE(MSG) \
 	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n");
 
-#define ENGINE_MESSAGE_ARGS(MSG, ARGS) \
-	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n", ARGS);
+#define ENGINE_MESSAGE_ARGS(MSG, ...) \
+	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n", __VA_ARGS__);
 
 #define ENGINE_WARNING(MSG) \
 	fprintf(stderr, "[VulkanEngine] WARN: " MSG "\n");
@@ -51,6 +51,7 @@ const std::array<const char*, 1> vk_dev_extensions = {
 
 struct queue_family_indices {
 	int32_t graphicsFamily = -1;
+	int32_t presentFamily = -1;
 };
 
 /*---------------------------

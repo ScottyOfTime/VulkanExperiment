@@ -220,7 +220,7 @@ EngineResult VulkanEngine::select_physical_device() {
 }
 
 static int queue_families_complete(queue_family_indices *qfi) {
-	return qfi->graphicsFamily > -1;
+	return qfi->graphicsFamily > -1 && qfi->presentFamily > -1;
 }
 
 EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physdev, queue_family_indices *pQfi) {
@@ -237,11 +237,21 @@ EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physdev, queue_f
 
 	for (int i = 0; i < qfc; i++) {
 		if (queue_families_complete(&qfi)) {
+			ENGINE_MESSAGE_ARGS("Found queue families:\n\tNAME\t\tINDEX\n\tGRAPHICS:\t %d\n\tPRESENT:\t %d",
+					qfi.graphicsFamily, qfi.presentFamily);
 			break;
 		}
+		VkBool32 present_support = false;
 		VkQueueFamilyProperties q = qfs[i];
 		if (q.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			qfi.graphicsFamily = i;
+		}
+		if (idisp.vkGetPhysicalDeviceSurfaceSupportKHR(physdev, i, surf, &present_support) != VK_SUCCESS) {
+			ENGINE_ERROR("Could not query for presentation support.");
+			return ENGINE_FAILURE;
+		}
+		if (present_support) {
+			qfi.presentFamily = i;
 		}
 	}
 	free (qfs);

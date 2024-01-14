@@ -1,7 +1,6 @@
 #include "vk_dispatch.h"
 
-void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr,
-		VkInstance inst) {
+void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst) {
 	if (inst == NULL) {
 		disp->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
 		disp->vkCreateInstance = (PFN_vkCreateInstance)disp->vkGetInstanceProcAddr(NULL, "vkCreateInstance");
@@ -18,6 +17,7 @@ void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProc
 		disp->vkGetPhysicalDeviceFeatures = (PFN_vkGetPhysicalDeviceFeatures)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceFeatures");
 
 		disp->vkGetPhysicalDeviceQueueFamilyProperties = (PFN_vkGetPhysicalDeviceQueueFamilyProperties)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceQueueFamilyProperties");
+		disp->vkGetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceSurfaceSupportKHR");
 		disp->vkGetPhysicalDeviceSurfaceCapabilitiesKHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
 		disp->vkGetPhysicalDeviceSurfaceFormatsKHR = (PFN_vkGetPhysicalDeviceSurfaceFormatsKHR)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceSurfaceFormatsKHR");
 		disp->vkGetPhysicalDeviceSurfacePresentModesKHR = (PFN_vkGetPhysicalDeviceSurfacePresentModesKHR)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceSurfacePresentModesKHR");
