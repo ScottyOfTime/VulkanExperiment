@@ -279,12 +279,11 @@ EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physdev, queue_f
 }
 
 EngineResult VulkanEngine::create_device() {
-	queue_family_indices qfi = {};
-	if (find_queue_families(physdev, &qfi) != ENGINE_SUCCESS) {
+	if (find_queue_families(physdev, &queueFamilies) != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
 
-	std::set<int32_t> unique_qfis = {qfi.graphicsFamily, qfi.presentFamily};
+	std::set<int32_t> unique_qfis = {queueFamilies.graphicsFamily, queueFamilies.presentFamily};
 	std::vector<VkDeviceQueueCreateInfo> qci_vec;
 	float qp = 1.0f;
 	for (int32_t q : unique_qfis) {
@@ -318,8 +317,8 @@ EngineResult VulkanEngine::create_device() {
 	load_device_dispatch_table(&ddisp, idisp.vkGetInstanceProcAddr, inst, dev);
 	ENGINE_MESSAGE("Created device and loaded device dispatch table.");
 
-	ddisp.vkGetDeviceQueue(dev, qfi.graphicsFamily, 0, &graphicsQueue);
-	ddisp.vkGetDeviceQueue(dev, qfi.presentFamily, 0, &presentQueue);
+	ddisp.vkGetDeviceQueue(dev, queueFamilies.graphicsFamily, 0, &graphicsQueue);
+	ddisp.vkGetDeviceQueue(dev, queueFamilies.presentFamily, 0, &graphicsQueue);
 
 	return ENGINE_SUCCESS;
 }

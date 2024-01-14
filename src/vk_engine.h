@@ -55,6 +55,13 @@ struct queue_family_indices {
 	int32_t presentFamily = -1;
 };
 
+struct frame_data {
+	VkCommandPool cmdPool;
+	VkCommandBuffer cmdBuf;
+};
+
+constexpr unsigned int FRAME_OVERLAP = 2;
+
 /*---------------------------
  | VULKANENGINE CLASS
  ---------------------------*/
@@ -87,6 +94,7 @@ private:
 	EngineResult create_surface();
 
 	VkPhysicalDevice physdev = NULL;
+	queue_family_indices queueFamilies;
 	EngineResult select_physical_device();
 	EngineResult find_queue_families(VkPhysicalDevice physdev,
 			queue_family_indices *qfi);
@@ -104,6 +112,8 @@ private:
 	std::vector<VkImageView> swapchainImgViews;
 	VkExtent2D swapchainExtent;
 	EngineResult create_swapchain();
+
+	struct frame_data frames[FRAME_OVERLAP];
 };
 
 #endif /* VK_ENGINE_H */
