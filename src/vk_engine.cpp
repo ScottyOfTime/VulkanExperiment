@@ -14,11 +14,17 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 	ENGINE_RUN_FN(create_surface);
 	ENGINE_RUN_FN(select_physical_device);
 	ENGINE_RUN_FN(create_device);
+	ENGINE_RUN_FN(create_swapchain);
 
 	return ENGINE_SUCCESS;
 }
 
 void VulkanEngine::deinit() {
+	if (swapchain != NULL) {
+		ENGINE_MESSAGE("Destroying swapchain.");
+		ddisp.vkDestroySwapchainKHR(dev, swapchain, NULL);
+	}
+
 	if (dev != NULL) {
 		ENGINE_MESSAGE("Destroying logical device.");
 		ddisp.vkDestroyDevice(dev, NULL);
@@ -111,8 +117,8 @@ EngineResult VulkanEngine::create_instance() {
 }
 
 uint32_t VulkanEngine::device_suitable(VkPhysicalDevice dev) {
-	fmts.clear();
-	present_modes.clear();
+	available_fmts.clear();
+	available_present_modes.clear();
 
 	VkPhysicalDeviceProperties2 devprops = {};
 	devprops.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
@@ -122,7 +128,7 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice dev) {
 
 	ENGINE_MESSAGE_ARGS("Found device %s: ", devprops.properties.deviceName);
 
-	// Extension support
+	// Query extension Support
 	uint32_t ext_count;
 	idisp.vkEnumerateDeviceExtensionProperties(dev, NULL, &ext_count, NULL);
 	if (ext_count == 0) {
@@ -149,33 +155,35 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice dev) {
 		}
 	}
 
-	// Surface formats support
+	// Start surface formats support
 	uint32_t fmts_count = 0;
 	idisp.vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surf, &fmts_count, NULL);
 	if (fmts_count == 0) {
 		ENGINE_WARNING("No surface formats detected.");
 		return 0;
 	}
-	if (idisp.vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surf, &fmts_count, fmts.data())
+	available_fmts.resize(fmts_count);
+	if (idisp.vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surf, &fmts_count, available_fmts.data())
 		!= VK_SUCCESS) {
 		ENGINE_WARNING("Failed to fetch physical device surface formats.");
 		return 0;
 	}
 
-	// Surface present modes support
+	// Start surface present modes support
 	uint32_t present_modes_count = 0;
 	idisp.vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surf, &present_modes_count, NULL);
 	if (present_modes_count == 0) {
 		ENGINE_WARNING("No surface present modes detected.");
 		return 0;
 	}
-	if (idisp.vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surf, &present_modes_count, present_modes.data())
+	available_present_modes.resize(present_modes_count);
+	if (idisp.vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surf, &present_modes_count, available_present_modes.data())
 		!= VK_SUCCESS) {
 		ENGINE_WARNING("Failed to fetch physical device surface present modes.");
 		return 0;
 	}
 
-	// Surface capabilities
+	// Start surface capabilities
 	if (idisp.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(dev, surf, &surfcaps) != VK_SUCCESS) {
 		ENGINE_WARNING("Could not query for physical device surface capabilities.\n");
 		return 0;
@@ -272,21 +280,26 @@ EngineResult VulkanEngine::create_device() {
 		return ENGINE_FAILURE;
 	}
 
-	VkDeviceQueueCreateInfo qci;
-	qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	qci.pNext = NULL;
-	qci.flags = {};
-	qci.queueFamilyIndex = qfi.graphicsFamily;
-	qci.queueCount = 1;
+	std::set<int32_t> unique_qfis = {qfi.graphicsFamily, qfi.presentFamily};
+	std::vector<VkDeviceQueueCreateInfo> qci_vec;
 	float qp = 1.0f;
-	qci.pQueuePriorities = &qp;
+	for (int32_t q : unique_qfis) {
+		VkDeviceQueueCreateInfo qci;
+		qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		qci.pNext = NULL;
+		qci.flags = {};
+		qci.queueFamilyIndex = static_cast<uint32_t>(q);
+		qci.queueCount = 1;
+		qci.pQueuePriorities = &qp;
+		qci_vec.push_back(qci);
+	}
 
 	VkDeviceCreateInfo ci;
 	ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	ci.pNext = NULL;
 	ci.flags = {};
-	ci.queueCreateInfoCount = 1;
-	ci.pQueueCreateInfos = &qci;
+	ci.queueCreateInfoCount = qci_vec.size();
+	ci.pQueueCreateInfos = qci_vec.data();
 	ci.enabledLayerCount = 0;
 	ci.enabledExtensionCount = vk_dev_extensions.size();
 	ci.ppEnabledExtensionNames = vk_dev_extensions.data();
@@ -312,12 +325,78 @@ EngineResult VulkanEngine::create_surface() {
 	return ENGINE_SUCCESS;
 }
 
-/*EngineResult VulkanEngine::create_swapchain() {
-	VkSwapchainCreateInfoKHR ci;
+EngineResult VulkanEngine::create_swapchain() {
+	// Choose format from available formats
+	VkSurfaceFormatKHR chosen_fmt;
+	int chosen = 0;
+	for (int i = 0; i < available_fmts.size(); i++) {
+		VkSurfaceFormatKHR fmt = available_fmts.at(i);
+		if (fmt.format == VK_FORMAT_B8G8R8A8_SRGB && 
+			fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+			chosen_fmt = fmt;
+			chosen = 1;
+		}
+	}
+	if (chosen == 0) {
+		chosen_fmt = available_fmts.at(0);
+	}
 
-	if (ddisp->vkCreateSwapchainKHR(#device, #pCreateInfo, #pAllocator, &swapchain) != VK_SUCCESS) {
+	// Choose presentation mode from available modes
+	VkPresentModeKHR chosen_present_mode;
+	chosen = 0;
+	for (int i = 0; i < available_present_modes.size(); i++) {
+		VkPresentModeKHR mode = available_present_modes.at(i);
+		if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+			chosen_present_mode = mode;
+			chosen = 1;
+		}
+	}
+	if (chosen == 0) {
+		chosen_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+	}
+
+	// Fetch the swapchain extent
+	swapchainExtent = surfcaps.currentExtent;
+	ENGINE_MESSAGE_ARGS("Detected swapchain extent:\n\t%dw x %dh",
+			swapchainExtent.width, swapchainExtent.height);
+
+	queue_family_indices qfi;
+	find_queue_families(physdev, &qfi);
+	uint32_t uint_qfi[] = {
+		static_cast<uint32_t>(qfi.graphicsFamily), 
+		static_cast<uint32_t>(qfi.presentFamily)
+	};
+
+	VkSwapchainCreateInfoKHR ci;
+	ci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	ci.pNext = NULL;
+	ci.flags = {};
+	ci.surface = surf;
+	ci.minImageCount = surfcaps.minImageCount + 1;
+	ci.imageFormat = chosen_fmt.format;
+	ci.imageColorSpace = chosen_fmt.colorSpace;
+	ci.imageExtent = swapchainExtent;
+	ci.imageArrayLayers = 1;
+	ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	if (qfi.graphicsFamily == qfi.presentFamily) {
+		ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		ci.queueFamilyIndexCount = 0;
+		ci.pQueueFamilyIndices = NULL;
+	} else {
+		ci.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		ci.queueFamilyIndexCount = 2;
+		ci.pQueueFamilyIndices = uint_qfi;
+	}
+	ci.preTransform = surfcaps.currentTransform;
+	ci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	ci.presentMode = chosen_present_mode;
+	ci.clipped = VK_TRUE;
+	ci.oldSwapchain = VK_NULL_HANDLE;
+
+	if (ddisp.vkCreateSwapchainKHR(dev, &ci, NULL, &swapchain) != VK_SUCCESS) {
 		ENGINE_ERROR("Could not create swapchain.");
 		return ENGINE_FAILURE;
 	}
+	ENGINE_MESSAGE("Created swapchain.");
 	return ENGINE_SUCCESS;
-}*/
+}

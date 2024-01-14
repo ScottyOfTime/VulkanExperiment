@@ -30,6 +30,9 @@ void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProc
 struct device_dispatch {
 	PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
 	PFN_vkDestroyDevice vkDestroyDevice;
+
+	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
+	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
 };
 
 void load_device_dispatch_table(device_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <array>
+#include <set>
 
 #include "os.h"
 #include "vk_dispatch.h"
@@ -79,10 +80,13 @@ private:
 	VkInstance inst = NULL;
 	EngineResult create_instance();
 
-	VkPhysicalDevice physdev = NULL;
+	VkSurfaceKHR surf = NULL;
 	VkSurfaceCapabilitiesKHR surfcaps;
-	std::vector<VkSurfaceFormatKHR> fmts;
-	std::vector<VkPresentModeKHR> present_modes;
+	std::vector<VkSurfaceFormatKHR> available_fmts;
+	std::vector<VkPresentModeKHR> available_present_modes;
+	EngineResult create_surface();
+
+	VkPhysicalDevice physdev = NULL;
 	EngineResult select_physical_device();
 	EngineResult find_queue_families(VkPhysicalDevice physdev,
 			queue_family_indices *qfi);
@@ -92,15 +96,11 @@ private:
 	device_dispatch ddisp;
 	EngineResult create_device();
 
-	VkSurfaceKHR surf = NULL;
-	EngineResult create_surface();
-
-	
 	VkSwapchainKHR swapchain = NULL;
 	VkFormat swapchainFmt;
 	std::vector<VkImage> swapchainImgs;
 	std::vector<VkImageView> swapchainImgViews;
-	VkExtent2D swapchaintExtent;
+	VkExtent2D swapchainExtent;
 	EngineResult create_swapchain();
 };
 

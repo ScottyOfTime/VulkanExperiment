@@ -28,4 +28,7 @@ void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProc
 void load_device_dispatch_table(device_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev) {
 	disp->vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)vkGetInstanceProcAddr(inst, "vkGetDeviceProcAddr");
 	disp->vkDestroyDevice = (PFN_vkDestroyDevice)disp->vkGetDeviceProcAddr(dev, "vkDestroyDevice");
+
+	disp->vkCreateSwapchainKHR = (PFN_vkCreateSwapchainKHR)disp->vkGetDeviceProcAddr(dev, "vkCreateSwapchainKHR");
+	disp->vkDestroySwapchainKHR = (PFN_vkDestroySwapchainKHR)disp->vkGetDeviceProcAddr(dev, "vkDestroySwapchainKHR");
 }
