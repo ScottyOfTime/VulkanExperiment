@@ -15,11 +15,19 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 	ENGINE_RUN_FN(select_physical_device);
 	ENGINE_RUN_FN(create_device);
 	ENGINE_RUN_FN(create_swapchain);
+	ENGINE_RUN_FN(init_commands);
 
 	return ENGINE_SUCCESS;
 }
 
 void VulkanEngine::deinit() {
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		if (frames[i].cmdPool != NULL) {
+			ENGINE_MESSAGE_ARGS("Destroying command pool %d", i);
+			deviceDispatch.vkDestroyCommandPool(device, frames[i].cmdPool, NULL);
+		}
+	}
+
 	if (swapchain != NULL) {
 		ENGINE_MESSAGE("Destroying swapchain image views.");
 		for (int i = 0; i < swapchainImgViews.size(); i++) {
@@ -99,7 +107,7 @@ EngineResult VulkanEngine::create_instance() {
 		fprintf(stderr, "\t%s\n", extensions.at(i));
 	}	
 
-	VkInstanceCreateInfo ci;
+	VkInstanceCreateInfo ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	ci.pNext = NULL;
 	ci.flags = {};
@@ -139,25 +147,28 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 		ENGINE_WARNING("No extension support detected.");
 		return 0;
 	}
-	VkExtensionProperties *exts = (VkExtensionProperties *)malloc(extensionCount * sizeof(VkExtensionProperties));
-	if (instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &extensionCount, exts) != VK_SUCCESS) {
+	VkExtensionProperties *extensions = (VkExtensionProperties *)malloc(extensionCount * sizeof(VkExtensionProperties));
+	if (instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &extensionCount, extensions) != VK_SUCCESS) {
 		ENGINE_WARNING("Failed to fetch extension properties.");
+		free(extensions);
 		return 0;
 	}
 
 	for (int i = 0; i < vkDeviceExtensions.size(); i++) {
 		uint32_t extensionFound = 0;
 		for (int j = 0; i < extensionCount; j++) {
-			if (!strcmp(vkDeviceExtensions[i], exts[j].extensionName)) {
+			if (!strcmp(vkDeviceExtensions[i], extensions[j].extensionName)) {
 				extensionFound = 1;
 				break;
 			}
 		}
 		if (!extensionFound) {
 			ENGINE_WARNING("Device does not support requested extensions.");
+			free(extensions);
 			return 0;
 		}
 	}
+	free(extensions);
 
 	// Start surface formats support
 	uint32_t formatsCount = 0;
@@ -287,7 +298,7 @@ EngineResult VulkanEngine::create_device() {
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	float qp = 1.0f;
 	for (int32_t q : uniqueIndices) {
-		VkDeviceQueueCreateInfo qci;
+		VkDeviceQueueCreateInfo qci = {};
 		qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		qci.pNext = NULL;
 		qci.flags = {};
@@ -297,7 +308,7 @@ EngineResult VulkanEngine::create_device() {
 		queueCreateInfos.push_back(qci);
 	}
 
-	VkDeviceCreateInfo ci;
+	VkDeviceCreateInfo ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	ci.pNext = NULL;
 	ci.flags = {};
@@ -367,16 +378,14 @@ EngineResult VulkanEngine::create_swapchain() {
 	ENGINE_MESSAGE_ARGS("Detected swapchain extent:\n\t%dw x %dh",
 			swapchainExtent.width, swapchainExtent.height);
 
-	QueueFamilyIndices qfi;
-	find_queue_families(physicalDevice, &qfi);
 	uint32_t uintIndices[] = {
-		static_cast<uint32_t>(qfi.graphicsFamily), 
-		static_cast<uint32_t>(qfi.presentFamily)
+		static_cast<uint32_t>(queueFamilies.graphicsFamily), 
+		static_cast<uint32_t>(queueFamilies.presentFamily)
 	};
 
 	uint32_t imgCount = surfaceCaps.minImageCount + 1;
 
-	VkSwapchainCreateInfoKHR ci;
+	VkSwapchainCreateInfoKHR ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	ci.pNext = NULL;
 	ci.flags = {};
@@ -387,7 +396,7 @@ EngineResult VulkanEngine::create_swapchain() {
 	ci.imageExtent = swapchainExtent;
 	ci.imageArrayLayers = 1;
 	ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	if (qfi.graphicsFamily == qfi.presentFamily) {
+	if (queueFamilies.graphicsFamily == queueFamilies.presentFamily) {
 		ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		ci.queueFamilyIndexCount = 0;
 		ci.pQueueFamilyIndices = NULL;
@@ -419,7 +428,7 @@ EngineResult VulkanEngine::create_swapchain() {
 	// Create image views
 	swapchainImgViews.resize(swapchainImgs.size());
 	for (int i = 0; i < swapchainImgs.size(); i ++) {
-		VkImageViewCreateInfo imgViewCi;
+		VkImageViewCreateInfo imgViewCi = {};
 		imgViewCi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		imgViewCi.pNext = NULL;
 		imgViewCi.flags = {};
@@ -441,5 +450,35 @@ EngineResult VulkanEngine::create_swapchain() {
 		}
 	}
 
+	return ENGINE_SUCCESS;
+}
+
+EngineResult VulkanEngine::init_commands() {
+	VkCommandPoolCreateInfo ci = {};
+	ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	ci.pNext = NULL;
+	ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	ci.queueFamilyIndex = queueFamilies.graphicsFamily;
+
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		if (deviceDispatch.vkCreateCommandPool(device, &ci, NULL, &frames[i].cmdPool) != VK_SUCCESS) {
+			ENGINE_ERROR("Could not create command pool.");
+			return ENGINE_FAILURE;
+		}
+		ENGINE_MESSAGE_ARGS("Created command pool %d", i);
+
+		// Allocate a single command buffer for rendering
+		VkCommandBufferAllocateInfo ai = {};
+		ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		ai.pNext = NULL;
+		ai.commandPool = frames[i].cmdPool;
+		ai.commandBufferCount = 1;
+		ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		if (deviceDispatch.vkAllocateCommandBuffers(device, &ai, &frames[i].cmdBuf) != VK_SUCCESS) {
+			ENGINE_ERROR("Could not allocate command buffer.");
+			return ENGINE_FAILURE;
+		}
+	}
 	return ENGINE_SUCCESS;
 }

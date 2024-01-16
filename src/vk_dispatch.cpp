@@ -38,4 +38,9 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 
 	disp->vkCreateImageView = (PFN_vkCreateImageView)disp->vkGetDeviceProcAddr(dev, "vkCreateImageView");
 	disp->vkDestroyImageView = (PFN_vkDestroyImageView)disp->vkGetDeviceProcAddr(dev, "vkDestroyImageView");
+
+	disp->vkCreateCommandPool = (PFN_vkCreateCommandPool)disp->vkGetDeviceProcAddr(dev, "vkCreateCommandPool");
+	disp->vkDestroyCommandPool = (PFN_vkDestroyCommandPool)disp->vkGetDeviceProcAddr(dev, "vkDestroyCommandPool");
+
+	disp->vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)disp->vkGetDeviceProcAddr(dev, "vkAllocateCommandBuffers");
 }

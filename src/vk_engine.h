@@ -56,7 +56,7 @@ struct QueueFamilyIndices {
 };
 
 struct FrameData {
-	VkCommandPool cmdPool;
+	VkCommandPool cmdPool = NULL;
 	VkCommandBuffer cmdBuf;
 };
 
@@ -114,6 +114,7 @@ private:
 	EngineResult create_swapchain();
 
 	struct FrameData frames[FRAME_OVERLAP];
+	EngineResult init_commands();
 };
 
 #endif /* VK_ENGINE_H */
