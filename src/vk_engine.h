@@ -81,33 +81,33 @@ private:
 #endif
 	EngineResult link();
 
-	instance_dispatch idisp;
+	instance_dispatch instanceDispatch;
 	EngineResult load_instance_pfns();
 
-	VkInstance inst = NULL;
+	VkInstance instance = NULL;
 	EngineResult create_instance();
 
-	VkSurfaceKHR surf = NULL;
-	VkSurfaceCapabilitiesKHR surfcaps;
-	std::vector<VkSurfaceFormatKHR> available_fmts;
-	std::vector<VkPresentModeKHR> available_present_modes;
+	VkSurfaceKHR surface = NULL;
+	VkSurfaceCapabilitiesKHR surfaceCaps;
+	std::vector<VkSurfaceFormatKHR> availableFormats;
+	std::vector<VkPresentModeKHR> availablePresentModes;
 	EngineResult create_surface();
 
-	VkPhysicalDevice physdev = NULL;
+	VkPhysicalDevice physicalDevice = NULL;
 	queue_family_indices queueFamilies;
-	EngineResult select_physical_device();
 	EngineResult find_queue_families(VkPhysicalDevice physdev,
 			queue_family_indices *qfi);
 	uint32_t device_suitable(VkPhysicalDevice dev);
+	EngineResult select_physical_device();
 
-	VkDevice dev = NULL;
+	VkDevice device = NULL;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
-	device_dispatch ddisp;
+	device_dispatch deviceDispatch;
 	EngineResult create_device();
 
 	VkSwapchainKHR swapchain = NULL;
-	VkFormat swapchainFmt;
+	VkFormat swapchainFormat;
 	std::vector<VkImage> swapchainImgs;
 	std::vector<VkImageView> swapchainImgViews;
 	VkExtent2D swapchainExtent;
