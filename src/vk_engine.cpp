@@ -81,22 +81,22 @@ EngineResult VulkanEngine::link() {
 }
 
 EngineResult VulkanEngine::create_instance() {
-	unsigned int sdl_ext_count = 0;
-	SDL_Vulkan_GetInstanceExtensions(window, &sdl_ext_count, NULL);
-	std::vector<const char*> exts(sdl_ext_count);
-	if (SDL_Vulkan_GetInstanceExtensions(window, &sdl_ext_count, exts.data()) != SDL_TRUE) {
+	unsigned int sdlExtensionCount = 0;
+	SDL_Vulkan_GetInstanceExtensions(window, &sdlExtensionCount, NULL);
+	std::vector<const char*> extensions(sdlExtensionCount);
+	if (SDL_Vulkan_GetInstanceExtensions(window, &sdlExtensionCount, extensions.data()) != SDL_TRUE) {
 		return ENGINE_FAILURE;
 	}
 
 	// This is commented out because SDL will automatically get VK_KHR_surface...
 	// uncomment if need extra extensions that SDL doesn't fetch automatically
-	/*for (int i = 0; i < vk_inst_extensions.size(); i++) {
-		exts.push_back(vk_inst_extensions.at(i));
+	/*for (int i = 0; i < vkInstanceExtensions.size(); i++) {
+		extensions.push_back(vkInstanceExtensions.at(i));
 	}*/
 
 	ENGINE_MESSAGE("Attempting to create instance with the following extensions:");
-	for (int i = 0; i < exts.size(); i++) {
-		fprintf(stderr, "\t%s\n", exts.at(i));
+	for (int i = 0; i < extensions.size(); i++) {
+		fprintf(stderr, "\t%s\n", extensions.at(i));
 	}	
 
 	VkInstanceCreateInfo ci;
@@ -106,8 +106,8 @@ EngineResult VulkanEngine::create_instance() {
 	ci.pApplicationInfo = NULL;
 	ci.enabledLayerCount = 0;
 	ci.ppEnabledLayerNames = NULL;
-	ci.enabledExtensionCount = exts.size();
-	ci.ppEnabledExtensionNames = exts.data();
+	ci.enabledExtensionCount = extensions.size();
+	ci.ppEnabledExtensionNames = extensions.data();
 
 	if (instanceDispatch.vkCreateInstance(&ci, NULL, &instance) != VK_SUCCESS) {
 		ENGINE_ERROR("Unable to create Vulkan instance.");
@@ -133,41 +133,41 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 	ENGINE_MESSAGE_ARGS("Found device %s: ", devprops.properties.deviceName);
 
 	// Query extension Support
-	uint32_t ext_count;
-	instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &ext_count, NULL);
-	if (ext_count == 0) {
+	uint32_t extensionCount;
+	instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &extensionCount, NULL);
+	if (extensionCount == 0) {
 		ENGINE_WARNING("No extension support detected.");
 		return 0;
 	}
-	VkExtensionProperties *exts = (VkExtensionProperties *)malloc(ext_count * sizeof(VkExtensionProperties));
-	if (instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &ext_count, exts) != VK_SUCCESS) {
+	VkExtensionProperties *exts = (VkExtensionProperties *)malloc(extensionCount * sizeof(VkExtensionProperties));
+	if (instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &extensionCount, exts) != VK_SUCCESS) {
 		ENGINE_WARNING("Failed to fetch extension properties.");
 		return 0;
 	}
 
-	for (int i = 0; i < vk_dev_extensions.size(); i++) {
-		uint32_t ext_found = 0;
-		for (int j = 0; i < ext_count; j++) {
-			if (!strcmp(vk_dev_extensions[i], exts[j].extensionName)) {
-				ext_found = 1;
+	for (int i = 0; i < vkDeviceExtensions.size(); i++) {
+		uint32_t extensionFound = 0;
+		for (int j = 0; i < extensionCount; j++) {
+			if (!strcmp(vkDeviceExtensions[i], exts[j].extensionName)) {
+				extensionFound = 1;
 				break;
 			}
 		}
-		if (!ext_found) {
+		if (!extensionFound) {
 			ENGINE_WARNING("Device does not support requested extensions.");
 			return 0;
 		}
 	}
 
 	// Start surface formats support
-	uint32_t fmts_count = 0;
-	instanceDispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &fmts_count, NULL);
-	if (fmts_count == 0) {
+	uint32_t formatsCount = 0;
+	instanceDispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatsCount, NULL);
+	if (formatsCount == 0) {
 		ENGINE_WARNING("No surface formats detected.");
 		return 0;
 	}
-	availableFormats.resize(fmts_count);
-	if (instanceDispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &fmts_count, availableFormats.data())
+	availableFormats.resize(formatsCount);
+	if (instanceDispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatsCount, availableFormats.data())
 		!= VK_SUCCESS) {
 		ENGINE_WARNING("Failed to fetch physical device surface formats.");
 		return 0;
@@ -199,23 +199,23 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 
 EngineResult VulkanEngine::select_physical_device() {
 	ENGINE_MESSAGE("Finding a suitable physical device...");
-	uint32_t numdevs;
-	instanceDispatch.vkEnumeratePhysicalDevices(instance, &numdevs, NULL);
+	uint32_t deviceCount;
+	instanceDispatch.vkEnumeratePhysicalDevices(instance, &deviceCount, NULL);
 
-	if (numdevs == 0) {
+	if (deviceCount == 0) {
 		ENGINE_ERROR("Could not find any devices.");
 		return ENGINE_FAILURE;
 	}
 
-	VkPhysicalDevice *devs = (VkPhysicalDevice*)malloc(numdevs * sizeof(VkPhysicalDevice));
-	if (instanceDispatch.vkEnumeratePhysicalDevices(instance, &numdevs, devs) != VK_SUCCESS) {
+	VkPhysicalDevice *devs = (VkPhysicalDevice*)malloc(deviceCount * sizeof(VkPhysicalDevice));
+	if (instanceDispatch.vkEnumeratePhysicalDevices(instance, &deviceCount, devs) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to enumerate physical devices.");
 		free(devs);
 		return ENGINE_FAILURE;
 	}
 
 	// Finds first suitable device which may not be the best
-	for (int i = 0; i < numdevs; i++) {
+	for (int i = 0; i < deviceCount; i++) {
 		if (device_suitable(devs[i])) {
 			physicalDevice = devs[i];
 			break;
@@ -231,12 +231,12 @@ EngineResult VulkanEngine::select_physical_device() {
 	return ENGINE_SUCCESS;
 }
 
-static int queue_families_complete(queue_family_indices *qfi) {
+static int queue_families_complete(QueueFamilyIndices *qfi) {
 	return qfi->graphicsFamily > -1 && qfi->presentFamily > -1;
 }
 
-EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physicalDevice, queue_family_indices *pQfi) {
-	queue_family_indices qfi;
+EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physicalDevice, QueueFamilyIndices *pQfi) {
+	QueueFamilyIndices qfi;
 	uint32_t qfc = 0;
 	
 	instanceDispatch.vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &qfc, NULL);
@@ -253,16 +253,16 @@ EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physicalDevice, 
 					qfi.graphicsFamily, qfi.presentFamily);
 			break;
 		}
-		VkBool32 present_support = false;
+		VkBool32 presentSupport = false;
 		VkQueueFamilyProperties q = qfs[i];
 		if (q.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			qfi.graphicsFamily = i;
 		}
-		if (instanceDispatch.vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &present_support) != VK_SUCCESS) {
+		if (instanceDispatch.vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport) != VK_SUCCESS) {
 			ENGINE_ERROR("Could not query for presentation support.");
 			return ENGINE_FAILURE;
 		}
-		if (present_support) {
+		if (presentSupport) {
 			qfi.presentFamily = i;
 		}
 	}
@@ -274,7 +274,7 @@ EngineResult VulkanEngine::find_queue_families(VkPhysicalDevice physicalDevice, 
 		
 	}
 
-	memcpy(pQfi, &qfi, sizeof(queue_family_indices));
+	memcpy(pQfi, &qfi, sizeof(QueueFamilyIndices));
 	return ENGINE_SUCCESS;
 }
 
@@ -283,10 +283,10 @@ EngineResult VulkanEngine::create_device() {
 		return ENGINE_FAILURE;
 	}
 
-	std::set<int32_t> unique_qfis = {queueFamilies.graphicsFamily, queueFamilies.presentFamily};
-	std::vector<VkDeviceQueueCreateInfo> qci_vec;
+	std::set<int32_t> uniqueIndices = {queueFamilies.graphicsFamily, queueFamilies.presentFamily};
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	float qp = 1.0f;
-	for (int32_t q : unique_qfis) {
+	for (int32_t q : uniqueIndices) {
 		VkDeviceQueueCreateInfo qci;
 		qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		qci.pNext = NULL;
@@ -294,18 +294,18 @@ EngineResult VulkanEngine::create_device() {
 		qci.queueFamilyIndex = static_cast<uint32_t>(q);
 		qci.queueCount = 1;
 		qci.pQueuePriorities = &qp;
-		qci_vec.push_back(qci);
+		queueCreateInfos.push_back(qci);
 	}
 
 	VkDeviceCreateInfo ci;
 	ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	ci.pNext = NULL;
 	ci.flags = {};
-	ci.queueCreateInfoCount = static_cast<uint32_t>(qci_vec.size());
-	ci.pQueueCreateInfos = qci_vec.data();
+	ci.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+	ci.pQueueCreateInfos = queueCreateInfos.data();
 	ci.enabledLayerCount = 0;
-	ci.enabledExtensionCount = vk_dev_extensions.size();
-	ci.ppEnabledExtensionNames = vk_dev_extensions.data();
+	ci.enabledExtensionCount = vkDeviceExtensions.size();
+	ci.ppEnabledExtensionNames = vkDeviceExtensions.data();
 	ci.pEnabledFeatures = NULL;
 
 	if (instanceDispatch.vkCreateDevice(physicalDevice, &ci, NULL, &device) != VK_SUCCESS) {
@@ -333,33 +333,33 @@ EngineResult VulkanEngine::create_surface() {
 
 EngineResult VulkanEngine::create_swapchain() {
 	// Choose format from available formats
-	VkSurfaceFormatKHR chosen_fmt;
+	VkSurfaceFormatKHR chosenFormat;
 	int chosen = 0;
 	for (int i = 0; i < availableFormats.size(); i++) {
-		VkSurfaceFormatKHR fmt = availableFormats.at(i);
-		if (fmt.format == VK_FORMAT_B8G8R8A8_SRGB && 
-			fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-			chosen_fmt = fmt;
+		VkSurfaceFormatKHR surfaceFormat = availableFormats.at(i);
+		if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB && 
+			surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+			chosenFormat = surfaceFormat;
 			chosen = 1;
 		}
 	}
 	if (chosen == 0) {
-		chosen_fmt = availableFormats.at(0);
+		chosenFormat = availableFormats.at(0);
 	}
-	swapchainFormat = chosen_fmt.format;
+	swapchainFormat = chosenFormat.format;
 
 	// Choose presentation mode from available modes
-	VkPresentModeKHR chosen_present_mode;
+	VkPresentModeKHR chosenPresentMode;
 	chosen = 0;
 	for (int i = 0; i < availablePresentModes.size(); i++) {
 		VkPresentModeKHR mode = availablePresentModes.at(i);
 		if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-			chosen_present_mode = mode;
+			chosenPresentMode = mode;
 			chosen = 1;
 		}
 	}
 	if (chosen == 0) {
-		chosen_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+		chosenPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	}
 
 	// Fetch the swapchain extent
@@ -367,23 +367,23 @@ EngineResult VulkanEngine::create_swapchain() {
 	ENGINE_MESSAGE_ARGS("Detected swapchain extent:\n\t%dw x %dh",
 			swapchainExtent.width, swapchainExtent.height);
 
-	queue_family_indices qfi;
+	QueueFamilyIndices qfi;
 	find_queue_families(physicalDevice, &qfi);
-	uint32_t uint_qfi[] = {
+	uint32_t uintIndices[] = {
 		static_cast<uint32_t>(qfi.graphicsFamily), 
 		static_cast<uint32_t>(qfi.presentFamily)
 	};
 
-	uint32_t image_count = surfaceCaps.minImageCount + 1;
+	uint32_t imgCount = surfaceCaps.minImageCount + 1;
 
 	VkSwapchainCreateInfoKHR ci;
 	ci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	ci.pNext = NULL;
 	ci.flags = {};
 	ci.surface = surface;
-	ci.minImageCount = image_count;
+	ci.minImageCount = imgCount;
 	ci.imageFormat = swapchainFormat;
-	ci.imageColorSpace = chosen_fmt.colorSpace;
+	ci.imageColorSpace = chosenFormat.colorSpace;
 	ci.imageExtent = swapchainExtent;
 	ci.imageArrayLayers = 1;
 	ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -394,11 +394,11 @@ EngineResult VulkanEngine::create_swapchain() {
 	} else {
 		ci.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
 		ci.queueFamilyIndexCount = 2;
-		ci.pQueueFamilyIndices = uint_qfi;
+		ci.pQueueFamilyIndices = uintIndices;
 	}
 	ci.preTransform = surfaceCaps.currentTransform;
 	ci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	ci.presentMode = chosen_present_mode;
+	ci.presentMode = chosenPresentMode;
 	ci.clipped = VK_TRUE;
 	ci.oldSwapchain = VK_NULL_HANDLE;
 
@@ -409,9 +409,9 @@ EngineResult VulkanEngine::create_swapchain() {
 	ENGINE_MESSAGE("Created swapchain.");
 
 	// Create images
-	deviceDispatch.vkGetSwapchainImagesKHR(device, swapchain, &image_count, NULL);
-	swapchainImgs.resize(image_count);
-	if (deviceDispatch.vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchainImgs.data()) != VK_SUCCESS) {
+	deviceDispatch.vkGetSwapchainImagesKHR(device, swapchain, &imgCount, NULL);
+	swapchainImgs.resize(imgCount);
+	if (deviceDispatch.vkGetSwapchainImagesKHR(device, swapchain, &imgCount, swapchainImgs.data()) != VK_SUCCESS) {
 		ENGINE_ERROR("Could not retrieve swapchain images.");
 		return ENGINE_FAILURE;
 	}
@@ -419,23 +419,23 @@ EngineResult VulkanEngine::create_swapchain() {
 	// Create image views
 	swapchainImgViews.resize(swapchainImgs.size());
 	for (int i = 0; i < swapchainImgs.size(); i ++) {
-		VkImageViewCreateInfo img_view_ci;
-		img_view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		img_view_ci.pNext = NULL;
-		img_view_ci.flags = {};
-		img_view_ci.image = swapchainImgs[i];
-		img_view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		img_view_ci.format = swapchainFormat;
-		img_view_ci.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-		img_view_ci.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-		img_view_ci.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-		img_view_ci.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-		img_view_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		img_view_ci.subresourceRange.baseMipLevel = 0;
-		img_view_ci.subresourceRange.levelCount = 1;
-		img_view_ci.subresourceRange.baseArrayLayer = 0;
-		img_view_ci.subresourceRange.layerCount = 1;
-		if (deviceDispatch.vkCreateImageView(device, &img_view_ci, NULL, &swapchainImgViews[i]) != VK_SUCCESS) {
+		VkImageViewCreateInfo imgViewCi;
+		imgViewCi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		imgViewCi.pNext = NULL;
+		imgViewCi.flags = {};
+		imgViewCi.image = swapchainImgs[i];
+		imgViewCi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		imgViewCi.format = swapchainFormat;
+		imgViewCi.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imgViewCi.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imgViewCi.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imgViewCi.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imgViewCi.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imgViewCi.subresourceRange.baseMipLevel = 0;
+		imgViewCi.subresourceRange.levelCount = 1;
+		imgViewCi.subresourceRange.baseArrayLayer = 0;
+		imgViewCi.subresourceRange.layerCount = 1;
+		if (deviceDispatch.vkCreateImageView(device, &imgViewCi, NULL, &swapchainImgViews[i]) != VK_SUCCESS) {
 			ENGINE_ERROR("Could not create swapchain image view.");
 			return ENGINE_FAILURE;
 		}

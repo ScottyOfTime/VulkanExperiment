@@ -3,7 +3,7 @@
 
 #include <vulkan/vulkan.h>
 
-struct instance_dispatch {
+struct InstanceDispatch {
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 
 	PFN_vkCreateInstance vkCreateInstance;
@@ -25,9 +25,9 @@ struct instance_dispatch {
 	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
 };
 
-void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst);
+void load_instance_dispatch_table(InstanceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst);
 
-struct device_dispatch {
+struct DeviceDispatch {
 	PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
 	PFN_vkDestroyDevice vkDestroyDevice;
 
@@ -42,6 +42,6 @@ struct device_dispatch {
 	PFN_vkDestroyImageView vkDestroyImageView;
 };
 
-void load_device_dispatch_table(device_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);
+void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);
 
 #endif /* VK_DISPATCH_H */

@@ -1,6 +1,6 @@
 #include "vk_dispatch.h"
 
-void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst) {
+void load_instance_dispatch_table(InstanceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst) {
 	if (inst == NULL) {
 		disp->vkGetInstanceProcAddr = vkGetInstanceProcAddr;
 		disp->vkCreateInstance = (PFN_vkCreateInstance)disp->vkGetInstanceProcAddr(NULL, "vkCreateInstance");
@@ -25,7 +25,7 @@ void load_instance_dispatch_table(instance_dispatch *disp, PFN_vkGetInstanceProc
 }
 
 
-void load_device_dispatch_table(device_dispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev) {
+void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev) {
 	disp->vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)vkGetInstanceProcAddr(inst, "vkGetDeviceProcAddr");
 	disp->vkDestroyDevice = (PFN_vkDestroyDevice)disp->vkGetDeviceProcAddr(dev, "vkDestroyDevice");
 

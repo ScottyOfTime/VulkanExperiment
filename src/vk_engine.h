@@ -42,20 +42,20 @@
  | CONST ARRAYS AND STRUCTS
  ---------------------------*/
 
-const std::array<const char*, 1> vk_inst_extensions = {
+const std::array<const char*, 1> vkInstanceExtensions = {
 	"VK_KHR_surface"
 };
 
-const std::array<const char*, 1> vk_dev_extensions = {
+const std::array<const char*, 1> vkDeviceExtensions = {
 	"VK_KHR_swapchain"
 };
 
-struct queue_family_indices {
+struct QueueFamilyIndices {
 	int32_t graphicsFamily = -1;
 	int32_t presentFamily = -1;
 };
 
-struct frame_data {
+struct FrameData {
 	VkCommandPool cmdPool;
 	VkCommandBuffer cmdBuf;
 };
@@ -81,7 +81,7 @@ private:
 #endif
 	EngineResult link();
 
-	instance_dispatch instanceDispatch;
+	InstanceDispatch instanceDispatch;
 	EngineResult load_instance_pfns();
 
 	VkInstance instance = NULL;
@@ -94,16 +94,16 @@ private:
 	EngineResult create_surface();
 
 	VkPhysicalDevice physicalDevice = NULL;
-	queue_family_indices queueFamilies;
+	QueueFamilyIndices queueFamilies;
 	EngineResult find_queue_families(VkPhysicalDevice physdev,
-			queue_family_indices *qfi);
+			QueueFamilyIndices *qfi);
 	uint32_t device_suitable(VkPhysicalDevice dev);
 	EngineResult select_physical_device();
 
 	VkDevice device = NULL;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
-	device_dispatch deviceDispatch;
+	DeviceDispatch deviceDispatch;
 	EngineResult create_device();
 
 	VkSwapchainKHR swapchain = NULL;
@@ -113,7 +113,7 @@ private:
 	VkExtent2D swapchainExtent;
 	EngineResult create_swapchain();
 
-	struct frame_data frames[FRAME_OVERLAP];
+	struct FrameData frames[FRAME_OVERLAP];
 };
 
 #endif /* VK_ENGINE_H */
