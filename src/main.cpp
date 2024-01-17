@@ -26,6 +26,7 @@ int main(int argc, char* argv[])
 	int quit = 0;
 	SDL_Event e;
 	while (!quit) {
+		vk->draw();
 		while (SDL_PollEvent(&e)) {
 			switch (e.type) {
 				case SDL_QUIT:

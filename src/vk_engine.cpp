@@ -1,4 +1,5 @@
 #include "vk_engine.h"
+#include "vk_images.h"
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	#define load_proc_addr GetProcAddress
@@ -16,12 +17,25 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 	ENGINE_RUN_FN(create_device);
 	ENGINE_RUN_FN(create_swapchain);
 	ENGINE_RUN_FN(init_commands);
+	ENGINE_RUN_FN(init_sync);
 
 	return ENGINE_SUCCESS;
 }
 
 void VulkanEngine::deinit() {
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		if (frames[i].renderFence != NULL) {
+			ENGINE_MESSAGE_ARGS("Destroying render fence %d", i);
+			deviceDispatch.vkDestroyFence(device, frames[i].renderFence, NULL);
+		}
+		if (frames[i].renderSemaphore != NULL) {
+			ENGINE_MESSAGE_ARGS("Destroying render semaphore %d", i);
+			deviceDispatch.vkDestroySemaphore(device, frames[i].renderSemaphore, NULL);
+		}
+		if (frames[i].swapchainSemaphore != NULL) {
+			ENGINE_MESSAGE_ARGS("Destroying swapchain semaphore %d", i);
+			deviceDispatch.vkDestroySemaphore(device, frames[i].swapchainSemaphore, NULL);
+		}
 		if (frames[i].cmdPool != NULL) {
 			ENGINE_MESSAGE_ARGS("Destroying command pool %d", i);
 			deviceDispatch.vkDestroyCommandPool(device, frames[i].cmdPool, NULL);
@@ -480,5 +494,148 @@ EngineResult VulkanEngine::init_commands() {
 			return ENGINE_FAILURE;
 		}
 	}
+	return ENGINE_SUCCESS;
+}
+
+EngineResult VulkanEngine::init_sync() {
+	// one fence to control when the gpu has finished rendering the frame,
+	// and two sempaphores to sync rendering with the swapchain
+	VkFenceCreateInfo fenceCi = {};
+	fenceCi.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceCi.pNext = NULL;
+	fenceCi.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	VkSemaphoreCreateInfo semaphoreCi = {};
+	semaphoreCi.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	semaphoreCi.pNext = NULL;
+	semaphoreCi.flags = 0;
+
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		if (deviceDispatch.vkCreateFence(device, &fenceCi, NULL, &frames[i].renderFence) != VK_SUCCESS) {
+			ENGINE_ERROR("Failed to create fence.");
+			return ENGINE_FAILURE;
+		}
+		if (deviceDispatch.vkCreateSemaphore(device, &semaphoreCi, NULL, &frames[i].swapchainSemaphore) != VK_SUCCESS) {
+			ENGINE_ERROR("Failed to create swapchain semaphore.");
+			return ENGINE_FAILURE;
+		}
+		if (deviceDispatch.vkCreateSemaphore(device, &semaphoreCi, NULL, &frames[i].renderSemaphore) != VK_SUCCESS) {
+			ENGINE_ERROR("Failed to create swapchain semaphore.");
+			return ENGINE_FAILURE;
+		}
+	}
+	return ENGINE_SUCCESS;
+}
+
+EngineResult VulkanEngine::draw() {
+	if (deviceDispatch.vkWaitForFences(device, 1, &get_current_frame().renderFence, true, TIMEOUT_N) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to wait for fences.");
+		return ENGINE_FAILURE;
+	}
+	if (deviceDispatch.vkResetFences(device, 1, &get_current_frame().renderFence) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to reset fences.");
+		return ENGINE_FAILURE;
+	}
+
+	uint32_t swapchainImgIndex;
+	if (deviceDispatch.vkAcquireNextImageKHR(device, swapchain, TIMEOUT_N, get_current_frame().swapchainSemaphore,
+		NULL, &swapchainImgIndex) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to aquire next image from swapchain.");
+		return ENGINE_FAILURE;
+	}
+
+	VkCommandBuffer cmd = get_current_frame().cmdBuf;
+	if (deviceDispatch.vkResetCommandBuffer(cmd, 0) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to reset command buffer.");
+		return ENGINE_FAILURE;
+	}
+
+	VkCommandBufferBeginInfo cmdBi = {};
+	cmdBi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBi.pNext = NULL;
+	cmdBi.pInheritanceInfo = NULL;
+	cmdBi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	if (deviceDispatch.vkBeginCommandBuffer(cmd, &cmdBi) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to begin command buffer.");
+		return ENGINE_FAILURE;
+	}
+
+	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+		&deviceDispatch);
+
+	VkClearColorValue clearColor;
+	float flash = abs(sin(frameNumber / 120.f));
+	clearColor = {{0.0f, 0.0f, flash, 1.0f}};
+
+	VkImageSubresourceRange clearRange = {};
+	clearRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	clearRange.baseMipLevel = 0;
+	clearRange.levelCount = VK_REMAINING_MIP_LEVELS;
+	clearRange.baseArrayLayer = 0;
+	clearRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+	deviceDispatch.vkCmdClearColorImage(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_GENERAL,
+		&clearColor, 1, &clearRange);
+
+	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			&deviceDispatch);
+
+	if (deviceDispatch.vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to end recording to command buffer.");
+		return ENGINE_FAILURE;
+	}
+
+	VkCommandBufferSubmitInfo cmdSi = {};
+	cmdSi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	cmdSi.pNext = NULL;
+	cmdSi.commandBuffer = cmd;
+	cmdSi.deviceMask = 0;
+
+	VkSemaphoreSubmitInfo semWi = {};
+	semWi.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	semWi.pNext = NULL;
+	semWi.semaphore = get_current_frame().swapchainSemaphore;
+	semWi.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+	semWi.deviceIndex = 0;
+	semWi.value = 1;
+
+	VkSemaphoreSubmitInfo semSi = {};
+	semSi.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	semSi.pNext = NULL;
+	semSi.semaphore = get_current_frame().renderSemaphore;
+	semSi.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+	semSi.deviceIndex = 0;
+	semSi.value = 1;
+
+	VkSubmitInfo2 submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submitInfo.pNext = NULL;
+	submitInfo.waitSemaphoreInfoCount = 1;
+	submitInfo.pWaitSemaphoreInfos = &semWi;
+	submitInfo.signalSemaphoreInfoCount = 1;
+	submitInfo.pSignalSemaphoreInfos = &semSi;
+
+	if (deviceDispatch.vkQueueSubmit2(graphicsQueue, 1, &submitInfo, get_current_frame().renderFence) != VK_SUCCESS) {
+		ENGINE_ERROR("Could not submit command buffer.");
+		return ENGINE_FAILURE;
+	}
+
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.pNext = NULL;
+	presentInfo.pSwapchains = &swapchain;
+	presentInfo.swapchainCount = 1;
+
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = &get_current_frame().renderSemaphore;
+
+	presentInfo.pImageIndices = &swapchainImgIndex;
+
+	if (deviceDispatch.vkQueuePresentKHR(graphicsQueue, &presentInfo) != VK_SUCCESS) {
+		ENGINE_ERROR("Could not present.");
+		return ENGINE_FAILURE;
+	}
+
+	frameNumber++;
 	return ENGINE_SUCCESS;
 }

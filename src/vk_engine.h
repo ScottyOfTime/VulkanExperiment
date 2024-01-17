@@ -21,6 +21,8 @@
 #define ENGINE_SUCCESS	0
 #define ENGINE_FAILURE	1
 
+#define TIMEOUT_N		1000000000
+
 #define ENGINE_MESSAGE(MSG) \
 	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n");
 
@@ -35,6 +37,12 @@
 
 #define ENGINE_RUN_FN(FN) \
 	if (FN() != ENGINE_SUCCESS) { \
+		return ENGINE_FAILURE; \
+	}
+
+#define VK_RUN_FN(FN, MSG) \
+	if (FN != VK_SUCCESS) { \
+		ENGINE_ERROR(MSG); \
 		return ENGINE_FAILURE; \
 	}
 
@@ -58,6 +66,10 @@ struct QueueFamilyIndices {
 struct FrameData {
 	VkCommandPool cmdPool = NULL;
 	VkCommandBuffer cmdBuf;
+
+	VkSemaphore swapchainSemaphore = NULL,
+		renderSemaphore = NULL;
+	VkFence renderFence = NULL;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -69,8 +81,9 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 class VulkanEngine {
 public:
 	EngineResult init(SDL_Window *win);
-
 	void deinit();
+
+	EngineResult draw();
 
 private:
 	SDL_Window *window;
@@ -114,7 +127,14 @@ private:
 	EngineResult create_swapchain();
 
 	struct FrameData frames[FRAME_OVERLAP];
+	uint32_t frameNumber = 0;
+	struct FrameData& get_current_frame() 
+	{ 
+		return frames[frameNumber % FRAME_OVERLAP]; 
+	}
 	EngineResult init_commands();
+
+	EngineResult init_sync();
 };
 
 #endif /* VK_ENGINE_H */

@@ -43,4 +43,25 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkDestroyCommandPool = (PFN_vkDestroyCommandPool)disp->vkGetDeviceProcAddr(dev, "vkDestroyCommandPool");
 
 	disp->vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)disp->vkGetDeviceProcAddr(dev, "vkAllocateCommandBuffers");
+
+	disp->vkCreateFence = (PFN_vkCreateFence)disp->vkGetDeviceProcAddr(dev, "vkCreateFence");
+	disp->vkDestroyFence = (PFN_vkDestroyFence)disp->vkGetDeviceProcAddr(dev, "vkDestroyFence");
+
+	disp->vkCreateSemaphore = (PFN_vkCreateSemaphore)disp->vkGetDeviceProcAddr(dev, "vkCreateSemaphore");
+	disp->vkDestroySemaphore = (PFN_vkDestroySemaphore)disp->vkGetDeviceProcAddr(dev, "vkDestroySemaphore");
+
+	disp->vkWaitForFences = (PFN_vkWaitForFences)disp->vkGetDeviceProcAddr(dev, "vkWaitForFences");
+	disp->vkResetFences = (PFN_vkResetFences)disp->vkGetDeviceProcAddr(dev, "vkResetFences");
+
+	disp->vkAcquireNextImageKHR = (PFN_vkAcquireNextImageKHR)disp->vkGetDeviceProcAddr(dev, "vkAquireNextImageKHR");
+
+	disp->vkResetCommandBuffer = (PFN_vkResetCommandBuffer)disp->vkGetDeviceProcAddr(dev, "vkResetCommandBuffer");
+	disp->vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer)disp->vkGetDeviceProcAddr(dev, "vkBeginCommandBuffer");
+	disp->vkEndCommandBuffer = (PFN_vkEndCommandBuffer)disp->vkGetDeviceProcAddr(dev, "vkEndCommandBuffer");
+
+	disp->vkCmdClearColorImage = (PFN_vkCmdClearColorImage)disp->vkGetDeviceProcAddr(dev, "vkCmdClearColorImage");
+
+	disp->vkQueueSubmit2 = (PFN_vkQueueSubmit2)disp->vkGetDeviceProcAddr(dev, "vkQueueSubmit2");
+	disp->vkCmdPipelineBarrier2 = (PFN_vkCmdPipelineBarrier2)disp->vkGetDeviceProcAddr(dev, "vkCmdPipelineBarrier2");
+	disp->vkQueuePresentKHR = (PFN_vkQueuePresentKHR)disp->vkGetDeviceProcAddr(dev, "vkQueuePresentKHR");
 }

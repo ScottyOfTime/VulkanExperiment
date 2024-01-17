@@ -45,6 +45,27 @@ struct DeviceDispatch {
 	PFN_vkDestroyCommandPool vkDestroyCommandPool;
 
 	PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
+
+	PFN_vkCreateFence vkCreateFence;
+	PFN_vkDestroyFence vkDestroyFence;
+
+	PFN_vkCreateSemaphore vkCreateSemaphore;
+	PFN_vkDestroySemaphore vkDestroySemaphore;
+
+	PFN_vkWaitForFences vkWaitForFences;
+	PFN_vkResetFences vkResetFences;
+
+	PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR;
+
+	PFN_vkResetCommandBuffer vkResetCommandBuffer;
+	PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
+	PFN_vkEndCommandBuffer vkEndCommandBuffer;
+
+	PFN_vkCmdClearColorImage vkCmdClearColorImage;
+
+	PFN_vkQueueSubmit2 vkQueueSubmit2;
+	PFN_vkCmdPipelineBarrier2 vkCmdPipelineBarrier2;
+	PFN_vkQueuePresentKHR vkQueuePresentKHR;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);
