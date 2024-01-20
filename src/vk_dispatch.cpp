@@ -28,6 +28,7 @@ void load_instance_dispatch_table(InstanceDispatch *disp, PFN_vkGetInstanceProcA
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev) {
 	disp->vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)vkGetInstanceProcAddr(inst, "vkGetDeviceProcAddr");
 	disp->vkDestroyDevice = (PFN_vkDestroyDevice)disp->vkGetDeviceProcAddr(dev, "vkDestroyDevice");
+	disp->vkDeviceWaitIdle = (PFN_vkDeviceWaitIdle)disp->vkGetDeviceProcAddr(dev, "vkDeviceWaitIdle");
 
 	disp->vkGetDeviceQueue = (PFN_vkGetDeviceQueue)disp->vkGetDeviceProcAddr(dev, "vkGetDeviceQueue");
 
@@ -53,7 +54,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkWaitForFences = (PFN_vkWaitForFences)disp->vkGetDeviceProcAddr(dev, "vkWaitForFences");
 	disp->vkResetFences = (PFN_vkResetFences)disp->vkGetDeviceProcAddr(dev, "vkResetFences");
 
-	disp->vkAcquireNextImageKHR = (PFN_vkAcquireNextImageKHR)disp->vkGetDeviceProcAddr(dev, "vkAquireNextImageKHR");
+	disp->vkAcquireNextImageKHR = (PFN_vkAcquireNextImageKHR)disp->vkGetDeviceProcAddr(dev, "vkAcquireNextImageKHR");
 
 	disp->vkResetCommandBuffer = (PFN_vkResetCommandBuffer)disp->vkGetDeviceProcAddr(dev, "vkResetCommandBuffer");
 	disp->vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer)disp->vkGetDeviceProcAddr(dev, "vkBeginCommandBuffer");

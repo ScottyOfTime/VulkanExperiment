@@ -30,6 +30,7 @@ void load_instance_dispatch_table(InstanceDispatch *disp, PFN_vkGetInstanceProcA
 struct DeviceDispatch {
 	PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
 	PFN_vkDestroyDevice vkDestroyDevice;
+	PFN_vkDeviceWaitIdle vkDeviceWaitIdle;
 
 	PFN_vkGetDeviceQueue vkGetDeviceQueue;
 

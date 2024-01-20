@@ -23,6 +23,11 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 }
 
 void VulkanEngine::deinit() {
+	if (device != NULL) {
+		deviceDispatch.vkDeviceWaitIdle(device);
+		ENGINE_MESSAGE("Waiting for device to idle.");
+	}
+
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
 		if (frames[i].renderFence != NULL) {
 			ENGINE_MESSAGE_ARGS("Destroying render fence %d", i);
@@ -119,13 +124,22 @@ EngineResult VulkanEngine::create_instance() {
 	ENGINE_MESSAGE("Attempting to create instance with the following extensions:");
 	for (int i = 0; i < extensions.size(); i++) {
 		fprintf(stderr, "\t%s\n", extensions.at(i));
-	}	
+	}
+
+	VkApplicationInfo ai = {};
+	ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+	ai.pNext = NULL;
+	ai.pApplicationName = "VulkanEngine";
+	ai.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
+	ai.pEngineName = "Scotty's Engine";
+	ai.engineVersion = VK_MAKE_VERSION(0, 1, 0);
+	ai.apiVersion = VK_MAKE_API_VERSION(1, 3, 0, 0);
 
 	VkInstanceCreateInfo ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	ci.pNext = NULL;
 	ci.flags = {};
-	ci.pApplicationInfo = NULL;
+	ci.pApplicationInfo = &ai;
 	ci.enabledLayerCount = 0;
 	ci.ppEnabledLayerNames = NULL;
 	ci.enabledExtensionCount = extensions.size();
@@ -162,6 +176,9 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 		return 0;
 	}
 	VkExtensionProperties *extensions = (VkExtensionProperties *)malloc(extensionCount * sizeof(VkExtensionProperties));
+	if (extensions == NULL) {
+		return ENGINE_FAILURE;
+	}
 	if (instanceDispatch.vkEnumerateDeviceExtensionProperties(device, NULL, &extensionCount, extensions) != VK_SUCCESS) {
 		ENGINE_WARNING("Failed to fetch extension properties.");
 		free(extensions);
@@ -322,9 +339,21 @@ EngineResult VulkanEngine::create_device() {
 		queueCreateInfos.push_back(qci);
 	}
 
+	VkPhysicalDeviceVulkan13Features feats13 = {};
+	feats13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	feats13.dynamicRendering = VK_TRUE;
+	feats13.synchronization2 = VK_TRUE;
+	feats13.pNext = NULL;
+
+	VkPhysicalDeviceVulkan12Features feats12 = {};
+	feats12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+	feats12.bufferDeviceAddress = VK_TRUE;
+	feats12.descriptorIndexing = VK_TRUE;
+	feats12.pNext = &feats13;
+
 	VkDeviceCreateInfo ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	ci.pNext = NULL;
+	ci.pNext = &feats12;
 	ci.flags = {};
 	ci.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 	ci.pQueueCreateInfos = queueCreateInfos.data();
@@ -409,7 +438,7 @@ EngineResult VulkanEngine::create_swapchain() {
 	ci.imageColorSpace = chosenFormat.colorSpace;
 	ci.imageExtent = swapchainExtent;
 	ci.imageArrayLayers = 1;
-	ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	ci.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	if (queueFamilies.graphicsFamily == queueFamilies.presentFamily) {
 		ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		ci.queueFamilyIndexCount = 0;
@@ -578,7 +607,7 @@ EngineResult VulkanEngine::draw() {
 		&clearColor, 1, &clearRange);
 
 	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			&deviceDispatch);
+		&deviceDispatch);
 
 	if (deviceDispatch.vkEndCommandBuffer(cmd) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to end recording to command buffer.");
@@ -614,6 +643,8 @@ EngineResult VulkanEngine::draw() {
 	submitInfo.pWaitSemaphoreInfos = &semWi;
 	submitInfo.signalSemaphoreInfoCount = 1;
 	submitInfo.pSignalSemaphoreInfos = &semSi;
+	submitInfo.commandBufferInfoCount = 1;
+	submitInfo.pCommandBufferInfos = &cmdSi;
 
 	if (deviceDispatch.vkQueueSubmit2(graphicsQueue, 1, &submitInfo, get_current_frame().renderFence) != VK_SUCCESS) {
 		ENGINE_ERROR("Could not submit command buffer.");
