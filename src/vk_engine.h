@@ -7,11 +7,15 @@
 #include <vector>
 #include <array>
 #include <set>
+#include <deque>
+#include <functional>
 
 #include "os.h"
 #include "vk_dispatch.h"
+#include "vk_types.h"
 #include "SDL.h"
 #include "SDL_vulkan.h"
+#include "vk_mem_alloc.h"
 
 /*---------------------------
  | MACROS
@@ -40,6 +44,8 @@
 		return ENGINE_FAILURE; \
 	}
 
+// This is currently not in use as I like the if + return statements in code ->
+// it makes it easier to parse and the engine code and find vulkan function calls
 #define VK_RUN_FN(FN, MSG) \
 	if (FN != VK_SUCCESS) { \
 		ENGINE_ERROR(MSG); \
@@ -58,6 +64,21 @@ const std::array<const char*, 1> vkDeviceExtensions = {
 	"VK_KHR_swapchain"
 };
 
+struct DeletionQueue {
+	std::deque<std::function<void()>> deletors;
+
+	void push_function(std::function<void()>&& fn) {
+		deletors.push_back(fn);
+	}
+
+	void flush() {
+		for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
+			(*it)();
+		}
+		deletors.clear();
+	}
+};
+
 struct QueueFamilyIndices {
 	int32_t graphicsFamily = -1;
 	int32_t presentFamily = -1;
@@ -70,6 +91,8 @@ struct FrameData {
 	VkSemaphore swapchainSemaphore = NULL,
 		renderSemaphore = NULL;
 	VkFence renderFence = NULL;
+
+	DeletionQueue deletionQueue;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -86,7 +109,10 @@ public:
 	EngineResult draw();
 
 private:
+	VmaAllocator allocator;
+	DeletionQueue mainDeletionQueue;
 	SDL_Window *window;
+
 #if defined(VK_USE_PLATFORM_XCB_KHR)
 	void *lib;
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -135,6 +161,12 @@ private:
 	EngineResult init_commands();
 
 	EngineResult init_sync();
+
+	// Draw resources
+	AllocatedImage drawImage;
+	VkExtent2D drawExtent;
+
+	void draw_background(VkCommandBuffer cmd);
 };
 
 #endif /* VK_ENGINE_H */

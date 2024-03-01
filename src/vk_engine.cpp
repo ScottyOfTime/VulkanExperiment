@@ -1,6 +1,11 @@
 #include "vk_engine.h"
 #include "vk_images.h"
 
+#define VMA_IMPLEMENTATION
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTION 1
+#include "vk_mem_alloc.h"
+
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	#define load_proc_addr GetProcAddress
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
@@ -15,9 +20,30 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 	ENGINE_RUN_FN(create_surface);
 	ENGINE_RUN_FN(select_physical_device);
 	ENGINE_RUN_FN(create_device);
+
+	// Initialise the memory allocator
+	VmaVulkanFunctions vulkanFunctions = {};
+	vulkanFunctions.vkGetInstanceProcAddr = instanceDispatch.vkGetInstanceProcAddr;
+	vulkanFunctions.vkGetDeviceProcAddr = deviceDispatch.vkGetDeviceProcAddr;
+
+	VmaAllocatorCreateInfo ai = {};
+	ai.vulkanApiVersion = VK_API_VERSION_1_3;
+	ai.physicalDevice = physicalDevice;
+	ai.device = device;
+	ai.instance = instance;
+	ai.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+	ai.pVulkanFunctions = &vulkanFunctions;
+	vmaCreateAllocator(&ai, &allocator);
+
+	mainDeletionQueue.push_function([&]() {
+		vmaDestroyAllocator(allocator);
+		});
+
 	ENGINE_RUN_FN(create_swapchain);
 	ENGINE_RUN_FN(init_commands);
 	ENGINE_RUN_FN(init_sync);
+
+	
 
 	return ENGINE_SUCCESS;
 }
@@ -27,6 +53,8 @@ void VulkanEngine::deinit() {
 		deviceDispatch.vkDeviceWaitIdle(device);
 		ENGINE_MESSAGE("Waiting for device to idle.");
 	}
+	mainDeletionQueue.flush();
+	ENGINE_MESSAGE("Flushing main deletor queue.")
 
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
 		if (frames[i].renderFence != NULL) {
@@ -493,6 +521,61 @@ EngineResult VulkanEngine::create_swapchain() {
 		}
 	}
 
+	VkExtent3D drawImageExtent = {
+		1280,
+		720,
+		1
+	};
+
+	drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	drawImage.imageExtent = drawImageExtent;
+
+	VkImageUsageFlags drawImageUsages{};
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	VkImageCreateInfo rImgInfo = {};
+	rImgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	rImgInfo.pNext = nullptr;
+	rImgInfo.imageType = VK_IMAGE_TYPE_2D;
+	rImgInfo.format = drawImage.imageFormat;
+	rImgInfo.extent = drawImage.imageExtent;
+	rImgInfo.mipLevels = 1;
+	rImgInfo.arrayLayers = 1;
+	rImgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	rImgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	rImgInfo.usage = drawImageUsages;
+
+	VmaAllocationCreateInfo rImgAllocInfo = {};
+	rImgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	rImgAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	vmaCreateImage(allocator, &rImgInfo, &rImgAllocInfo, &drawImage.image, &drawImage.allocation, nullptr);
+
+	VkImageViewCreateInfo rViewInfo = {};
+	rViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	rViewInfo.pNext = nullptr;
+	rViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	rViewInfo.image = drawImage.image;
+	rViewInfo.format = drawImage.imageFormat;
+	rViewInfo.subresourceRange.baseMipLevel = 0;
+	rViewInfo.subresourceRange.levelCount = 1;
+	rViewInfo.subresourceRange.baseArrayLayer = 0;
+	rViewInfo.subresourceRange.layerCount = 1;
+	rViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+	if (deviceDispatch.vkCreateImageView(device, &rViewInfo, nullptr, &drawImage.imageView) != VK_SUCCESS) {
+		ENGINE_ERROR("Could not create image view.");
+		return ENGINE_FAILURE;
+	}
+
+	mainDeletionQueue.push_function([=]() {
+		deviceDispatch.vkDestroyImageView(device, drawImage.imageView, nullptr);
+		vmaDestroyImage(allocator, drawImage.image, drawImage.allocation);
+	});
+
 	return ENGINE_SUCCESS;
 }
 
@@ -561,6 +644,7 @@ EngineResult VulkanEngine::draw() {
 		ENGINE_ERROR("Failed to wait for fences.");
 		return ENGINE_FAILURE;
 	}
+	get_current_frame().deletionQueue.flush();
 	if (deviceDispatch.vkResetFences(device, 1, &get_current_frame().renderFence) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to reset fences.");
 		return ENGINE_FAILURE;
@@ -579,6 +663,9 @@ EngineResult VulkanEngine::draw() {
 		return ENGINE_FAILURE;
 	}
 
+	drawExtent.width = drawImage.imageExtent.width;
+	drawExtent.height = drawImage.imageExtent.height;
+
 	VkCommandBufferBeginInfo cmdBi = {};
 	cmdBi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBi.pNext = NULL;
@@ -589,24 +676,23 @@ EngineResult VulkanEngine::draw() {
 		return ENGINE_FAILURE;
 	}
 
-	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+	// Transition main draw image into general layout so we can write into it
+	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 		&deviceDispatch);
 
-	VkClearColorValue clearColor;
-	float flash = abs(sin(frameNumber / 120.f));
-	clearColor = {{0.0f, 0.0f, flash, 1.0f}};
+	draw_background(cmd);
 
-	VkImageSubresourceRange clearRange = {};
-	clearRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	clearRange.baseMipLevel = 0;
-	clearRange.levelCount = VK_REMAINING_MIP_LEVELS;
-	clearRange.baseArrayLayer = 0;
-	clearRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+	// Transition the draw image and the swapchain image into their correct trnasfer layouts
+	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		&deviceDispatch);
+	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		&deviceDispatch);
 
-	deviceDispatch.vkCmdClearColorImage(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_GENERAL,
-		&clearColor, 1, &clearRange);
+	// Copy draw image into swapchain
+	copy_image_to_image(cmd, drawImage.image, swapchainImgs[swapchainImgIndex], drawExtent, swapchainExtent,
+		&deviceDispatch);
 
-	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		&deviceDispatch);
 
 	if (deviceDispatch.vkEndCommandBuffer(cmd) != VK_SUCCESS) {
@@ -669,4 +755,20 @@ EngineResult VulkanEngine::draw() {
 
 	frameNumber++;
 	return ENGINE_SUCCESS;
+}
+
+void VulkanEngine::draw_background(VkCommandBuffer cmd) {
+	VkClearColorValue clearValue;
+	float flash = abs(sin(frameNumber / 120.f));
+	clearValue = { {0.0f, 0.0f, flash, 1.0f} };
+
+	VkImageSubresourceRange clearRange = {};
+	clearRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	clearRange.baseMipLevel = 0;
+	clearRange.levelCount = VK_REMAINING_MIP_LEVELS;
+	clearRange.baseArrayLayer = 0;
+	clearRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+	deviceDispatch.vkCmdClearColorImage(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
+		&clearValue, 1, &clearRange);
 }

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(VulkanExperiment)
 
+set(CMAKE_CXX_STANDARD 23)
+
 if (NOT USE_PLATFORM MATCHES "VK_USE_PLATFORM_.*")
 	if (WIN32)
 		set(USE_PLATFORM "VK_USE_PLATFORM_WIN32_KHR")
@@ -17,3 +19,7 @@ set(VULKAN_SDK_VERSION 1.3.268.0)
 add_definitions(-D${USE_PLATFORM})
 
 add_subdirectory(src)
+
+add_subdirectory(third-party/VulkanMemoryAllocator)
+
+

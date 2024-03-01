@@ -65,4 +65,9 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkQueueSubmit2 = (PFN_vkQueueSubmit2)disp->vkGetDeviceProcAddr(dev, "vkQueueSubmit2");
 	disp->vkCmdPipelineBarrier2 = (PFN_vkCmdPipelineBarrier2)disp->vkGetDeviceProcAddr(dev, "vkCmdPipelineBarrier2");
 	disp->vkQueuePresentKHR = (PFN_vkQueuePresentKHR)disp->vkGetDeviceProcAddr(dev, "vkQueuePresentKHR");
+
+	disp->vkCreateImageView = (PFN_vkCreateImageView)disp->vkGetDeviceProcAddr(dev, "vkCreateImageView");
+	disp->vkDestroyImageView = (PFN_vkDestroyImageView)disp->vkGetDeviceProcAddr(dev, "vkDestroyImageView");
+
+	disp->vkCmdBlitImage2 = (PFN_vkCmdBlitImage2)disp->vkGetDeviceProcAddr(dev, "vkCmdBlitImage2");
 }

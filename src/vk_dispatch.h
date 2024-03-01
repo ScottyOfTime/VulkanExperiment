@@ -67,6 +67,8 @@ struct DeviceDispatch {
 	PFN_vkQueueSubmit2 vkQueueSubmit2;
 	PFN_vkCmdPipelineBarrier2 vkCmdPipelineBarrier2;
 	PFN_vkQueuePresentKHR vkQueuePresentKHR;
+
+	PFN_vkCmdBlitImage2 vkCmdBlitImage2;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

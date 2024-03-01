@@ -5,6 +5,7 @@
 
 int main(int argc, char* argv[])
 {
+	int quit;
 	printf("[Main] Running vulkan demo.\n");
 	
 	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -23,7 +24,7 @@ int main(int argc, char* argv[])
 		goto cleanup;
 	}
 	
-	int quit = 0;
+	quit = 0;
 	SDL_Event e;
 	while (!quit) {
 		vk->draw();
