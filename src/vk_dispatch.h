@@ -69,6 +69,27 @@ struct DeviceDispatch {
 	PFN_vkQueuePresentKHR vkQueuePresentKHR;
 
 	PFN_vkCmdBlitImage2 vkCmdBlitImage2;
+
+	PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout;
+	PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
+	PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets;
+
+	PFN_vkCreateDescriptorPool vkCreateDescriptorPool;
+	PFN_vkResetDescriptorPool vkResetDescriptorPool;
+	PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool;
+
+	PFN_vkCreateShaderModule vkCreateShaderModule;
+	PFN_vkDestroyShaderModule vkDestroyShaderModule;
+
+	PFN_vkCreatePipelineLayout vkCreatePipelineLayout;
+	PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout;
+
+	PFN_vkCreateComputePipelines vkCreateComputePipelines;
+	PFN_vkDestroyPipeline vkDestroyPipeline;
+
+	PFN_vkCmdBindPipeline vkCmdBindPipeline;
+	PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets;
+	PFN_vkCmdDispatch vkCmdDispatch;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

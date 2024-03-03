@@ -37,13 +37,13 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 
 	mainDeletionQueue.push_function([&]() {
 		vmaDestroyAllocator(allocator);
-		});
+	});
 
 	ENGINE_RUN_FN(create_swapchain);
 	ENGINE_RUN_FN(init_commands);
 	ENGINE_RUN_FN(init_sync);
-
-	
+	ENGINE_RUN_FN(init_descriptors);
+	ENGINE_RUN_FN(init_pipelines);
 
 	return ENGINE_SUCCESS;
 }
@@ -639,6 +639,102 @@ EngineResult VulkanEngine::init_sync() {
 	return ENGINE_SUCCESS;
 }
 
+EngineResult VulkanEngine::init_descriptors() {
+	std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
+	{
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+	};
+
+	descriptorAllocator.init(device, 10, sizes, &deviceDispatch);
+
+	{
+		DescriptorLayoutBuilder builder;
+		builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		drawImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_COMPUTE_BIT,
+			&deviceDispatch);
+	}
+
+	// Allocate descriptor set for draw image
+	drawImageDescriptors = descriptorAllocator.alloc(device, drawImageDescriptorLayout,
+		&deviceDispatch);
+
+	VkDescriptorImageInfo imgInfo = {};
+	imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	imgInfo.imageView = drawImage.imageView;
+
+	VkWriteDescriptorSet drawImageWrite = {};
+	drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	drawImageWrite.pNext = NULL;
+	drawImageWrite.dstBinding = 0;
+	drawImageWrite.dstSet = drawImageDescriptors;
+	drawImageWrite.descriptorCount = 1;
+	drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	drawImageWrite.pImageInfo = &imgInfo;
+
+	deviceDispatch.vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
+
+	mainDeletionQueue.push_function([&] {
+		descriptorAllocator.destroy_pool(device, &deviceDispatch);
+	});
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult VulkanEngine::init_pipelines() {
+	if (init_background_pipelines() != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+}
+
+EngineResult VulkanEngine::init_background_pipelines() {
+	VkPipelineLayoutCreateInfo ci = {};
+	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	ci.pNext = NULL;
+	ci.pSetLayouts = &drawImageDescriptorLayout;
+	ci.setLayoutCount = 1;
+
+	if (deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &gradientPipelineLayout) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to create pipeline layout.");
+		return ENGINE_FAILURE;
+	}
+
+	VkShaderModule computeDrawShader;
+	if (!load_shader_module("../../shaders/gradient.spv", device, &computeDrawShader,
+		&deviceDispatch)) {
+		ENGINE_ERROR("Failed to build the compute shader.");
+		return ENGINE_FAILURE;
+	}
+
+	VkPipelineShaderStageCreateInfo si = {};
+	si.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	si.pNext = NULL;
+	si.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+	si.module = computeDrawShader;
+	si.pName = "main";
+
+	VkComputePipelineCreateInfo computeCi = {};
+	computeCi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	computeCi.pNext = NULL;
+	computeCi.layout = gradientPipelineLayout;
+	computeCi.stage = si;
+	computeCi.basePipelineHandle = VK_NULL_HANDLE;
+
+	if (deviceDispatch.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeCi, NULL,
+		&gradientPipeline) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to create compute pipeline");
+		return ENGINE_FAILURE;
+	}
+
+	deviceDispatch.vkDestroyShaderModule(device, computeDrawShader, NULL);
+
+	mainDeletionQueue.push_function([&] {
+		deviceDispatch.vkDestroyPipelineLayout(device, gradientPipelineLayout, NULL);
+		deviceDispatch.vkDestroyPipeline(device, gradientPipeline, NULL);
+	});
+
+	return ENGINE_SUCCESS;
+}
+
 EngineResult VulkanEngine::draw() {
 	if (deviceDispatch.vkWaitForFences(device, 1, &get_current_frame().renderFence, true, TIMEOUT_N) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to wait for fences.");
@@ -769,6 +865,11 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd) {
 	clearRange.baseArrayLayer = 0;
 	clearRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-	deviceDispatch.vkCmdClearColorImage(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
-		&clearValue, 1, &clearRange);
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline);
+	deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout,
+		0, 1, &drawImageDescriptors, 0, NULL);
+
+	deviceDispatch.vkCmdDispatch(cmd, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }
+
+

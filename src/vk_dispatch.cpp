@@ -70,4 +70,25 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkDestroyImageView = (PFN_vkDestroyImageView)disp->vkGetDeviceProcAddr(dev, "vkDestroyImageView");
 
 	disp->vkCmdBlitImage2 = (PFN_vkCmdBlitImage2)disp->vkGetDeviceProcAddr(dev, "vkCmdBlitImage2");
+
+	disp->vkCreateDescriptorSetLayout = (PFN_vkCreateDescriptorSetLayout)disp->vkGetDeviceProcAddr(dev, "vkCreateDescriptorSetLayout");
+	disp->vkAllocateDescriptorSets = (PFN_vkAllocateDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkAllocateDescriptorSets");
+	disp->vkUpdateDescriptorSets = (PFN_vkUpdateDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkUpdateDescriptorSets");
+
+	disp->vkCreateDescriptorPool = (PFN_vkCreateDescriptorPool)disp->vkGetDeviceProcAddr(dev, "vkCreateDescriptorPool");
+	disp->vkResetDescriptorPool = (PFN_vkResetDescriptorPool)disp->vkGetDeviceProcAddr(dev, "vkResetDescriptorPool");
+	disp->vkDestroyDescriptorPool = (PFN_vkDestroyDescriptorPool)disp->vkGetDeviceProcAddr(dev, "vkDestroyDescriptorPool");
+
+	disp->vkCreateShaderModule = (PFN_vkCreateShaderModule)disp->vkGetDeviceProcAddr(dev, "vkCreateShaderModule");
+	disp->vkDestroyShaderModule = (PFN_vkDestroyShaderModule)disp->vkGetDeviceProcAddr(dev, "vkDestroyShaderModule");
+
+	disp->vkCreatePipelineLayout = (PFN_vkCreatePipelineLayout)disp->vkGetDeviceProcAddr(dev, "vkCreatePipelineLayout");
+	disp->vkDestroyPipelineLayout = (PFN_vkDestroyPipelineLayout)disp->vkGetDeviceProcAddr(dev, "vkDestroyPipelineLayout");
+
+	disp->vkCreateComputePipelines = (PFN_vkCreateComputePipelines)disp->vkGetDeviceProcAddr(dev, "vkCreateComputePipelines");
+	disp->vkDestroyPipeline = (PFN_vkDestroyPipeline)disp->vkGetDeviceProcAddr(dev, "vkDestroyPipeline");
+
+	disp->vkCmdBindPipeline = (PFN_vkCmdBindPipeline)disp->vkGetDeviceProcAddr(dev, "vkCmdBindPipeline");
+	disp->vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkCmdBindDescriptorSets");
+	disp->vkCmdDispatch = (PFN_vkCmdDispatch)disp->vkGetDeviceProcAddr(dev, "vkCmdDispatch");
 }

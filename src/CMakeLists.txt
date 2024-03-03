@@ -2,7 +2,9 @@
 
 add_executable(vulkan main.cpp)
 
-add_library(vulkanengine vk_engine.cpp vk_dispatch.cpp vk_images.cpp)
+add_library(vulkanengine 
+	vk_engine.cpp vk_dispatch.cpp vk_images.cpp vk_descriptors.cpp
+)
 
 if (WIN32)
 	target_include_directories(vulkan PUBLIC

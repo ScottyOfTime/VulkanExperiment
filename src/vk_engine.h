@@ -13,6 +13,8 @@
 #include "os.h"
 #include "vk_dispatch.h"
 #include "vk_types.h"
+#include "vk_descriptors.h"
+#include "vk_pipelines.h"
 #include "SDL.h"
 #include "SDL_vulkan.h"
 #include "vk_mem_alloc.h"
@@ -108,6 +110,13 @@ public:
 
 	EngineResult draw();
 
+	DescriptorAllocator descriptorAllocator;
+	VkDescriptorSet drawImageDescriptors;
+	VkDescriptorSetLayout drawImageDescriptorLayout;
+
+	VkPipeline gradientPipeline;
+	VkPipelineLayout gradientPipelineLayout;
+
 private:
 	VmaAllocator allocator;
 	DeletionQueue mainDeletionQueue;
@@ -162,11 +171,17 @@ private:
 
 	EngineResult init_sync();
 
+	EngineResult init_descriptors();
+
+	EngineResult init_pipelines();
+	EngineResult init_background_pipelines();
+
 	// Draw resources
 	AllocatedImage drawImage;
 	VkExtent2D drawExtent;
 
 	void draw_background(VkCommandBuffer cmd);
+
 };
 
 #endif /* VK_ENGINE_H */

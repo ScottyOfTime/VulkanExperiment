@@ -21,5 +21,3 @@ add_definitions(-D${USE_PLATFORM})
 add_subdirectory(src)
 
 add_subdirectory(third-party/VulkanMemoryAllocator)
-
-
