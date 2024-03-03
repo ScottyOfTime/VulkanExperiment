@@ -4,6 +4,7 @@ add_executable(vulkan main.cpp)
 
 add_library(vulkanengine 
 	vk_engine.cpp vk_dispatch.cpp vk_images.cpp vk_descriptors.cpp
+	vk_pipelines.cpp
 )
 
 if (WIN32)
