@@ -18,6 +18,7 @@ set(VULKAN_SDK_VERSION 1.3.268.0)
 
 add_definitions(-D${USE_PLATFORM})
 
+add_subdirectory(third-party)
+
 add_subdirectory(src)
 
-add_subdirectory(third-party/VulkanMemoryAllocator)

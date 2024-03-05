@@ -2,6 +2,9 @@
 
 #include "SDL.h"
 #include "vk_engine.h"
+#include "imgui.h"
+#include "backends/imgui_impl_vulkan.h"
+#include "backends/imgui_impl_sdl2.h"
 
 int main(int argc, char* argv[])
 {
@@ -27,13 +30,24 @@ int main(int argc, char* argv[])
 	quit = 0;
 	SDL_Event e;
 	while (!quit) {
-		vk->draw();
 		while (SDL_PollEvent(&e)) {
 			switch (e.type) {
 				case SDL_QUIT:
 					quit = 1;
 			}
+
+			ImGui_ImplSDL2_ProcessEvent(&e);
 		}
+
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplSDL2_NewFrame();
+		ImGui::NewFrame();
+
+		ImGui::ShowDemoWindow();
+
+		ImGui::Render();
+
+		vk->draw();
 	}
 
 cleanup:

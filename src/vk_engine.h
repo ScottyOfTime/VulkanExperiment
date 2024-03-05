@@ -18,6 +18,9 @@
 #include "SDL.h"
 #include "SDL_vulkan.h"
 #include "vk_mem_alloc.h"
+#include "imgui.h"
+#include "backends/imgui_impl_sdl2.h"
+#include "backends/imgui_impl_vulkan.h"
 
 /*---------------------------
  | MACROS
@@ -48,6 +51,8 @@
 
 // This is currently not in use as I like the if + return statements in code ->
 // it makes it easier to parse and the engine code and find vulkan function calls
+// update: I have started using this instead of the big if statement -> will need
+// to refactor existing ones in order to maintain consistency
 #define VK_RUN_FN(FN, MSG) \
 	if (FN != VK_SUCCESS) { \
 		ENGINE_ERROR(MSG); \
@@ -117,6 +122,13 @@ public:
 	VkPipeline gradientPipeline;
 	VkPipelineLayout gradientPipelineLayout;
 
+	// Immediate mode submit structures
+	VkFence immFence;
+	VkCommandBuffer immCmdBuf;
+	VkCommandPool immCmdPool;
+
+	EngineResult immediate_submit(std::function<void(VkCommandBuffer)>&& fn);
+
 private:
 	VmaAllocator allocator;
 	DeletionQueue mainDeletionQueue;
@@ -176,11 +188,15 @@ private:
 	EngineResult init_pipelines();
 	EngineResult init_background_pipelines();
 
+	EngineResult init_imgui();
+
 	// Draw resources
 	AllocatedImage drawImage;
 	VkExtent2D drawExtent;
 
 	void draw_background(VkCommandBuffer cmd);
+
+	EngineResult draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
 
 };
 

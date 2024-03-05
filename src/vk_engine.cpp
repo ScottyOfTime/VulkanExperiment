@@ -6,6 +6,7 @@
 #define VMA_DYNAMIC_VULKAN_FUNCTION 1
 #include "vk_mem_alloc.h"
 
+
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	#define load_proc_addr GetProcAddress
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
@@ -44,6 +45,7 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 	ENGINE_RUN_FN(init_sync);
 	ENGINE_RUN_FN(init_descriptors);
 	ENGINE_RUN_FN(init_pipelines);
+	ENGINE_RUN_FN(init_imgui);
 
 	return ENGINE_SUCCESS;
 }
@@ -588,12 +590,12 @@ EngineResult VulkanEngine::init_commands() {
 
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
 		if (deviceDispatch.vkCreateCommandPool(device, &ci, NULL, &frames[i].cmdPool) != VK_SUCCESS) {
-			ENGINE_ERROR("Could not create command pool.");
+			ENGINE_ERROR("Failed to create command pool.");
 			return ENGINE_FAILURE;
 		}
 		ENGINE_MESSAGE_ARGS("Created command pool %d", i);
 
-		// Allocate a single command buffer for rendering
+		// allocate a single command buffer for rendering
 		VkCommandBufferAllocateInfo ai = {};
 		ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		ai.pNext = NULL;
@@ -606,6 +608,29 @@ EngineResult VulkanEngine::init_commands() {
 			return ENGINE_FAILURE;
 		}
 	}
+
+	// immediate submits
+	if (deviceDispatch.vkCreateCommandPool(device, &ci, NULL, &immCmdPool) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to create immediate submit command pool.");
+		return ENGINE_FAILURE;
+	}
+	ENGINE_MESSAGE_ARGS("Created immediate submit command pool.");
+
+	VkCommandBufferAllocateInfo ai = {};
+	ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	ai.pNext = NULL;
+	ai.commandPool = immCmdPool;
+	ai.commandBufferCount = 1;
+	ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	if (deviceDispatch.vkAllocateCommandBuffers(device, &ai, &immCmdBuf) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to allocate immediate submit command buffers.");
+		return ENGINE_FAILURE;
+	}
+	mainDeletionQueue.push_function([=]() {
+		deviceDispatch.vkDestroyCommandPool(device, immCmdPool, NULL);
+	});
+
 	return ENGINE_SUCCESS;
 }
 
@@ -636,6 +661,15 @@ EngineResult VulkanEngine::init_sync() {
 			return ENGINE_FAILURE;
 		}
 	}
+
+	if (deviceDispatch.vkCreateFence(device, &fenceCi, NULL, &immFence) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to create immediate submit fence.");
+		return ENGINE_FAILURE;
+	}
+	mainDeletionQueue.push_function([=]() {
+		deviceDispatch.vkDestroyFence(device, immFence, NULL);
+	});
+
 	return ENGINE_SUCCESS;
 }
 
@@ -735,6 +769,78 @@ EngineResult VulkanEngine::init_background_pipelines() {
 	return ENGINE_SUCCESS;
 }
 
+static PFN_vkVoidFunction imgui_function_loader(const char* function_name, void* user_data) {
+	ImguiLoaderData* loaderData = (ImguiLoaderData*)user_data;
+	VkInstance instance = (VkInstance)loaderData->instance;
+	InstanceDispatch* instanceDispatch = (InstanceDispatch*)loaderData->instanceDispatch;
+
+	return instanceDispatch->vkGetInstanceProcAddr(instance, function_name);
+}
+
+EngineResult VulkanEngine::init_imgui() {
+	VkDescriptorPoolSize poolSizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+	VkDescriptorPoolCreateInfo pi = {};
+	pi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pi.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	pi.maxSets = 1000;
+	pi.poolSizeCount = (uint32_t)std::size(poolSizes);
+	pi.pPoolSizes = poolSizes;
+
+	VkDescriptorPool imguiPool;
+	VK_RUN_FN(deviceDispatch.vkCreateDescriptorPool(device, &pi, NULL, &imguiPool),
+		"Failed to create imgui descriptor pool.");
+
+	ImGui::CreateContext();
+	ImGui_ImplSDL2_InitForVulkan(window);
+
+	ImGui_ImplVulkan_InitInfo initInfo = {};
+	initInfo.Instance = instance;
+	initInfo.PhysicalDevice = physicalDevice;
+	initInfo.Device = device;
+	initInfo.Queue = graphicsQueue;
+	initInfo.DescriptorPool = imguiPool;
+	initInfo.MinImageCount = 3;
+	initInfo.ImageCount = 3;
+	initInfo.UseDynamicRendering = true;
+	initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineRenderingCreateInfo ci = {};
+	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	ci.pNext = NULL;
+	ci.viewMask = 0;
+	ci.colorAttachmentCount = 1;
+	ci.pColorAttachmentFormats = &swapchainFormat;
+	ci.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+	ci.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
+	initInfo.PipelineRenderingCreateInfo = ci;
+	
+	ImguiLoaderData loaderData = { .instance = instance, .instanceDispatch = &instanceDispatch };
+	ImGui_ImplVulkan_LoadFunctions(imgui_function_loader, (void*)&loaderData);
+	ImGui_ImplVulkan_Init(&initInfo);
+
+
+	ImGui_ImplVulkan_CreateFontsTexture();
+
+	mainDeletionQueue.push_function([=]() {
+		deviceDispatch.vkDestroyDescriptorPool(device, imguiPool, NULL);
+		ImGui_ImplVulkan_Shutdown();
+	});
+
+	return ENGINE_SUCCESS;
+}
+
 EngineResult VulkanEngine::draw() {
 	if (deviceDispatch.vkWaitForFences(device, 1, &get_current_frame().renderFence, true, TIMEOUT_N) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to wait for fences.");
@@ -759,6 +865,7 @@ EngineResult VulkanEngine::draw() {
 		return ENGINE_FAILURE;
 	}
 
+//> Draw first
 	drawExtent.width = drawImage.imageExtent.width;
 	drawExtent.height = drawImage.imageExtent.height;
 
@@ -783,13 +890,19 @@ EngineResult VulkanEngine::draw() {
 		&deviceDispatch);
 	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		&deviceDispatch);
-
-	// Copy draw image into swapchain
+//< Draw first
+//> Draw imgui
 	copy_image_to_image(cmd, drawImage.image, swapchainImgs[swapchainImgIndex], drawExtent, swapchainExtent,
 		&deviceDispatch);
 
-	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &deviceDispatch);
+
+	draw_imgui(cmd, swapchainImgViews[swapchainImgIndex]);
+
+	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		&deviceDispatch);
+//< Draw imgui
 
 	if (deviceDispatch.vkEndCommandBuffer(cmd) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to end recording to command buffer.");
@@ -873,3 +986,79 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd) {
 }
 
 
+EngineResult VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& fn) {
+	if (deviceDispatch.vkResetFences(device, 1, &immFence) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to reset immedaite submit fences.");
+		return ENGINE_FAILURE;
+	}
+	if (deviceDispatch.vkResetCommandBuffer(immCmdBuf, 0) != VK_SUCCESS) {
+		ENGINE_ERROR("Failed to reset immedaite submit command buffer.");
+		return ENGINE_FAILURE;
+	}
+
+	VkCommandBuffer cmd = immCmdBuf;
+
+	VkCommandBufferBeginInfo cmdBi = {};
+	cmdBi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBi.pNext = NULL;
+	cmdBi.pInheritanceInfo = NULL;
+	cmdBi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	VK_RUN_FN(deviceDispatch.vkBeginCommandBuffer(cmd, &cmdBi),
+		"Failed to begin command buffer.");
+
+	fn(cmd);
+
+	VK_RUN_FN(deviceDispatch.vkEndCommandBuffer(cmd),
+		"Failed to end command buffer.");
+
+	VkCommandBufferSubmitInfo cmdSi = {};
+	cmdSi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	cmdSi.pNext = NULL;
+	cmdSi.commandBuffer = cmd;
+	cmdSi.deviceMask = 0;
+
+	VkSubmitInfo2 submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submitInfo.pNext = NULL;
+	submitInfo.waitSemaphoreInfoCount = 0;
+	submitInfo.pWaitSemaphoreInfos = NULL;
+	submitInfo.signalSemaphoreInfoCount = 0;
+	submitInfo.pSignalSemaphoreInfos = NULL;
+	submitInfo.commandBufferInfoCount = 1;
+	submitInfo.pCommandBufferInfos = &cmdSi;
+
+	VK_RUN_FN(deviceDispatch.vkQueueSubmit2(graphicsQueue, 1, &submitInfo, immFence),
+		"Failed to submit command.");
+
+	VK_RUN_FN(deviceDispatch.vkWaitForFences(device, 1, &immFence, true, 9999999999),
+		"Failed to wait for fences");
+}
+
+EngineResult VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
+	VkRenderingAttachmentInfo rAttachInfo = {};
+	rAttachInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	rAttachInfo.pNext = NULL;
+	rAttachInfo.imageView = targetImgView;
+	rAttachInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	rAttachInfo.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	rAttachInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo rInfo = {};
+	rInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	rInfo.pNext = NULL;
+	rInfo.renderArea = VkRect2D{ VkOffset2D {0, 0}, swapchainExtent };
+	rInfo.layerCount = 1;
+	rInfo.colorAttachmentCount = 1;
+	rInfo.pColorAttachments = &rAttachInfo;
+	rInfo.pDepthAttachment = NULL;
+	rInfo.pStencilAttachment = NULL;
+
+	deviceDispatch.vkCmdBeginRendering(cmd, &rInfo);
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	deviceDispatch.vkCmdEndRendering(cmd);
+
+	return ENGINE_SUCCESS;
+}

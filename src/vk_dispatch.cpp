@@ -91,4 +91,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkCmdBindPipeline = (PFN_vkCmdBindPipeline)disp->vkGetDeviceProcAddr(dev, "vkCmdBindPipeline");
 	disp->vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkCmdBindDescriptorSets");
 	disp->vkCmdDispatch = (PFN_vkCmdDispatch)disp->vkGetDeviceProcAddr(dev, "vkCmdDispatch");
+
+	disp->vkCmdBeginRendering = (PFN_vkCmdBeginRendering)disp->vkGetDeviceProcAddr(dev, "vkCmdBeginRendering");
+	disp->vkCmdEndRendering = (PFN_vkCmdEndRendering)disp->vkGetDeviceProcAddr(dev, "vkCmdEndRendering");
 }

@@ -11,10 +11,12 @@ if (WIN32)
 	target_include_directories(vulkan PUBLIC
 		C:/devel/SDL2-VC/include
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
+		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
 target_include_directories(vulkanengine PRIVATE
 		C:/devel/SDL2-VC/include
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
+		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
 endif()
 
@@ -28,6 +30,7 @@ target_link_libraries(vulkan
 
 target_link_libraries(vulkanengine
 	GPUOpen::VulkanMemoryAllocator
+	imgui
 )
 
 

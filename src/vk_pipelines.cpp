@@ -22,8 +22,6 @@ uint32_t load_shader_module(const char* filepath, VkDevice device, VkShaderModul
 
 	file.close();
 
-	fprintf(stderr, "%d\n", buffer.data());
-
 	VkShaderModuleCreateInfo ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	ci.pNext = NULL;
@@ -32,7 +30,6 @@ uint32_t load_shader_module(const char* filepath, VkDevice device, VkShaderModul
 
 	VkShaderModule shaderModule;
 	if (deviceDispatch->vkCreateShaderModule(device, &ci, NULL, &shaderModule) != VK_SUCCESS) {
-		fprintf(stderr, "HERE-------------\n");
 		return 0;
 	}
 	*outShaderModule = shaderModule;

@@ -1,1 +1,2 @@
-add_library(vma INTERFACE)
+add_subdirectory(VulkanMemoryAllocator)
+add_subdirectory(imgui)
