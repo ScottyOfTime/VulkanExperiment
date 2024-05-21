@@ -31,11 +31,13 @@ elseif(UNIX)
 	target_include_directories(vulkan PUBLIC
 		$ENV{VULKAN_SDK}/include
 		$ENV{HOME}/SDL2/include
+		${PROJECT_SOURCE_DIR}/third-party/glm
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
 	target_include_directories(vulkanengine PUBLIC
 		$ENV{VULKAN_SDK}/include
 		$ENV{HOME}/SDL2/include
+		${PROJECT_SOURCE_DIR}/third-party/glm
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
 	target_link_libraries(vulkan

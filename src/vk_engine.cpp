@@ -115,6 +115,7 @@ EngineResult VulkanEngine::link() {
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	lib = LoadLibrary("vulkan-1.dll");
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
+	ENGINE_MESSAGE("Loading libvulkan.so.1.");
 	lib = dlopen("libvulkan.so.1", RTLD_NOW);
 #endif
 
@@ -124,7 +125,7 @@ EngineResult VulkanEngine::link() {
 	}	
 
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)load_proc_addr(lib, "vkGetInstanceProcAddr");
-	if (!instanceDispatch.vkGetInstanceProcAddr) {
+	if (!vkGetInstanceProcAddr) {
 		ENGINE_ERROR("Could not load vkGetInstanceProcAddr.");
 		return ENGINE_FAILURE;
 	}
