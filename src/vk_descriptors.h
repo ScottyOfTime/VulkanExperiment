@@ -1,6 +1,8 @@
 #include <vector>
 #include <span>
 #include <vulkan/vulkan.h>
+#include <stdio.h>
+#include <cstdlib>
 
 #include "vk_dispatch.h"
 

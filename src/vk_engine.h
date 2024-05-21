@@ -2,6 +2,7 @@
 #define VK_ENGINE_H
 
 #include <stdio.h>
+#include <cmath>
 #include <string.h>
 #include <vulkan/vulkan.h>
 #include <vector>
@@ -36,7 +37,7 @@
 	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n");
 
 #define ENGINE_MESSAGE_ARGS(MSG, ...) \
-	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n", __VA_ARGS__);
+	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n", ##__VA_ARGS__);
 
 #define ENGINE_WARNING(MSG) \
 	fprintf(stderr, "[VulkanEngine] WARN: " MSG "\n");

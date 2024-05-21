@@ -13,20 +13,36 @@ if (WIN32)
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
-target_include_directories(vulkanengine PRIVATE
+	target_include_directories(vulkanengine PRIVATE
 		C:/devel/SDL2-VC/include
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
+	target_link_libraries(vulkan 
+		${CMAKE_SOURCE_DIR}/lib/SDL2.lib
+		${CMAKE_SOURCE_DIR}/lib/SDL2main.lib
+		${CMAKE_SOURCE_DIR}/lib/SDL2test.lib
+		vulkanengine
+	)
+elseif(UNIX)
+	find_package(SDL2 REQUIRED)
+	target_include_directories(vulkan PUBLIC
+		$ENV{VULKAN_SDK}/include
+		$ENV{HOME}/SDL2/include
+		${PROJECT_SOURCE_DIR}/third-party/imgui
+	)
+	target_include_directories(vulkanengine PUBLIC
+		$ENV{VULKAN_SDK}/include
+		$ENV{HOME}/SDL2/include
+		${PROJECT_SOURCE_DIR}/third-party/imgui
+	)
+	target_link_libraries(vulkan
+		vulkanengine
+		${SDL2_LIBRARIES}
+	)
 endif()
 
 
-target_link_libraries(vulkan 
-	${CMAKE_SOURCE_DIR}/lib/SDL2.lib
-	${CMAKE_SOURCE_DIR}/lib/SDL2main.lib
-	${CMAKE_SOURCE_DIR}/lib/SDL2test.lib
-	vulkanengine
-)
 
 target_link_libraries(vulkanengine
 	GPUOpen::VulkanMemoryAllocator
