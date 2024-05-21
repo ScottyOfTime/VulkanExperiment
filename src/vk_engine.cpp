@@ -246,7 +246,7 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 		return 0;
 	}
 
-	// Start sWynonna Earpurface present modes support
+	// Start surface present modes support
 	uint32_t present_modes_count = 0;
 	instanceDispatch.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_modes_count, NULL);
 	if (present_modes_count == 0) {
@@ -266,7 +266,7 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 		return 0;
 	}
 
-	return devprops.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+	return devprops.properties.deviceType == /*VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&*/
 		devfeats.geometryShader;
 }
 
@@ -720,6 +720,7 @@ EngineResult VulkanEngine::init_pipelines() {
 	if (init_background_pipelines() != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
+	return ENGINE_SUCCESS;
 }
 
 EngineResult VulkanEngine::init_background_pipelines() {
