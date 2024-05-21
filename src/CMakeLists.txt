@@ -12,11 +12,13 @@ if (WIN32)
 		C:/devel/SDL2-VC/include
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
+		${PROJECT_SOURCE_DIR}/third-party/glm
 	)
 target_include_directories(vulkanengine PRIVATE
 		C:/devel/SDL2-VC/include
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
+		${PROJECT_SOURCE_DIR}/third-party/glm
 	)
 endif()
 

@@ -74,6 +74,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkCreateDescriptorSetLayout = (PFN_vkCreateDescriptorSetLayout)disp->vkGetDeviceProcAddr(dev, "vkCreateDescriptorSetLayout");
 	disp->vkAllocateDescriptorSets = (PFN_vkAllocateDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkAllocateDescriptorSets");
 	disp->vkUpdateDescriptorSets = (PFN_vkUpdateDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkUpdateDescriptorSets");
+	disp->vkDestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)disp->vkGetDeviceProcAddr(dev, "vkDestroyDescriptorSetLayout");
 
 	disp->vkCreateDescriptorPool = (PFN_vkCreateDescriptorPool)disp->vkGetDeviceProcAddr(dev, "vkCreateDescriptorPool");
 	disp->vkResetDescriptorPool = (PFN_vkResetDescriptorPool)disp->vkGetDeviceProcAddr(dev, "vkResetDescriptorPool");
@@ -94,4 +95,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 
 	disp->vkCmdBeginRendering = (PFN_vkCmdBeginRendering)disp->vkGetDeviceProcAddr(dev, "vkCmdBeginRendering");
 	disp->vkCmdEndRendering = (PFN_vkCmdEndRendering)disp->vkGetDeviceProcAddr(dev, "vkCmdEndRendering");
+
+	disp->vkCmdPushConstants = (PFN_vkCmdPushConstants)disp->vkGetDeviceProcAddr(dev, "vkCmdPushConstants");
+
 }

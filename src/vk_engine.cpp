@@ -245,7 +245,7 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 		return 0;
 	}
 
-	// Start surface present modes support
+	// Start sWynonna Earpurface present modes support
 	uint32_t present_modes_count = 0;
 	instanceDispatch.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_modes_count, NULL);
 	if (present_modes_count == 0) {
@@ -708,6 +708,7 @@ EngineResult VulkanEngine::init_descriptors() {
 	deviceDispatch.vkUpdateDescriptorSets(device, 1, &drawImageWrite, 0, nullptr);
 
 	mainDeletionQueue.push_function([&] {
+		deviceDispatch.vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, NULL);
 		descriptorAllocator.destroy_pool(device, &deviceDispatch);
 	});
 
@@ -727,13 +728,28 @@ EngineResult VulkanEngine::init_background_pipelines() {
 	ci.pSetLayouts = &drawImageDescriptorLayout;
 	ci.setLayoutCount = 1;
 
+	VkPushConstantRange pushConst = {};
+	pushConst.offset = 0;
+	pushConst.size = sizeof(ComputePushConstants);
+	pushConst.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+	ci.pPushConstantRanges = &pushConst;
+	ci.pushConstantRangeCount = 1;
+
 	if (deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &gradientPipelineLayout) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to create pipeline layout.");
 		return ENGINE_FAILURE;
 	}
 
-	VkShaderModule computeDrawShader;
-	if (!load_shader_module("../../shaders/gradient.spv", device, &computeDrawShader,
+	VkShaderModule gradientShader;
+	if (!load_shader_module("../../shaders/gradient_color.spv", device, &gradientShader,
+		&deviceDispatch)) {
+		ENGINE_ERROR("Failed to build the compute shader.");
+		return ENGINE_FAILURE;
+	}
+
+	VkShaderModule skyShader;
+	if (!load_shader_module("../../shaders/sky.spv", device, &skyShader,
 		&deviceDispatch)) {
 		ENGINE_ERROR("Failed to build the compute shader.");
 		return ENGINE_FAILURE;
@@ -743,7 +759,7 @@ EngineResult VulkanEngine::init_background_pipelines() {
 	si.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	si.pNext = NULL;
 	si.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	si.module = computeDrawShader;
+	si.module = gradientShader;
 	si.pName = "main";
 
 	VkComputePipelineCreateInfo computeCi = {};
@@ -753,17 +769,39 @@ EngineResult VulkanEngine::init_background_pipelines() {
 	computeCi.stage = si;
 	computeCi.basePipelineHandle = VK_NULL_HANDLE;
 
-	if (deviceDispatch.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeCi, NULL,
-		&gradientPipeline) != VK_SUCCESS) {
-		ENGINE_ERROR("Failed to create compute pipeline");
-		return ENGINE_FAILURE;
-	}
+	ComputeEffect gradient;
+	gradient.layout = gradientPipelineLayout;
+	gradient.name = "gradient";
+	gradient.data = {};
+	gradient.data.data1 = glm::vec4(1, 0, 0, 1);
+	gradient.data.data2 = glm::vec4(0, 0, 1, 1);
 
-	deviceDispatch.vkDestroyShaderModule(device, computeDrawShader, NULL);
+	VK_RUN_FN(deviceDispatch.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeCi, NULL,
+		&gradient.pipeline),
+		"Failed to create compute pipeline");
+
+	computeCi.stage.module = skyShader;
+
+	ComputeEffect sky;
+	sky.layout = gradientPipelineLayout;
+	sky.name = "sky";
+	sky.data = {};
+	sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
+
+	VK_RUN_FN(deviceDispatch.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeCi, NULL,
+		&sky.pipeline),
+		"Failed to create compute pipeline");
+
+	backgroundEffects.push_back(gradient);
+	backgroundEffects.push_back(sky);
+
+	deviceDispatch.vkDestroyShaderModule(device, gradientShader, NULL);
+	deviceDispatch.vkDestroyShaderModule(device, skyShader, NULL);
 
 	mainDeletionQueue.push_function([&] {
 		deviceDispatch.vkDestroyPipelineLayout(device, gradientPipelineLayout, NULL);
-		deviceDispatch.vkDestroyPipeline(device, gradientPipeline, NULL);
+		deviceDispatch.vkDestroyPipeline(device, gradient.pipeline, NULL);
+		deviceDispatch.vkDestroyPipeline(device, sky.pipeline, NULL);
 	});
 
 	return ENGINE_SUCCESS;
@@ -978,9 +1016,14 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd) {
 	clearRange.baseArrayLayer = 0;
 	clearRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
-	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline);
+	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect];
+
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 	deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout,
 		0, 1, &drawImageDescriptors, 0, NULL);
+
+	deviceDispatch.vkCmdPushConstants(cmd, gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+		sizeof(ComputePushConstants), &effect.data);
 
 	deviceDispatch.vkCmdDispatch(cmd, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }

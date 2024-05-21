@@ -73,6 +73,7 @@ struct DeviceDispatch {
 	PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout;
 	PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
 	PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets;
+	PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout;
 
 	PFN_vkCreateDescriptorPool vkCreateDescriptorPool;
 	PFN_vkResetDescriptorPool vkResetDescriptorPool;
@@ -93,6 +94,8 @@ struct DeviceDispatch {
 
 	PFN_vkCmdBeginRendering vkCmdBeginRendering;
 	PFN_vkCmdEndRendering vkCmdEndRendering;
+
+	PFN_vkCmdPushConstants vkCmdPushConstants;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

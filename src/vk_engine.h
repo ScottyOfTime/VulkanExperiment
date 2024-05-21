@@ -21,6 +21,7 @@
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_vulkan.h"
+#include "glm/vec4.hpp";
 
 /*---------------------------
  | MACROS
@@ -102,6 +103,22 @@ struct FrameData {
 	DeletionQueue deletionQueue;
 };
 
+struct ComputePushConstants {
+	glm::vec4 data1;
+	glm::vec4 data2;
+	glm::vec4 data3;
+	glm::vec4 data4;
+};
+
+struct ComputeEffect {
+	const char *name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+
+	ComputePushConstants data;
+};
+
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 /*---------------------------
@@ -129,6 +146,10 @@ public:
 
 	EngineResult immediate_submit(std::function<void(VkCommandBuffer)>&& fn);
 
+
+	std::vector<ComputeEffect> backgroundEffects;
+	int currentBackgroundEffect{ 0 };
+
 private:
 	VmaAllocator allocator;
 	DeletionQueue mainDeletionQueue;
@@ -142,7 +163,6 @@ private:
 	EngineResult link();
 
 	InstanceDispatch instanceDispatch;
-	EngineResult load_instance_pfns();
 
 	VkInstance instance = NULL;
 	EngineResult create_instance();
@@ -197,7 +217,6 @@ private:
 	void draw_background(VkCommandBuffer cmd);
 
 	EngineResult draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
-
 };
 
 #endif /* VK_ENGINE_H */
