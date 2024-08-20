@@ -14,7 +14,7 @@ endif()
 
 
 
-set(VULKAN_SDK_VERSION 1.3.268.0)
+set(VULKAN_SDK_VERSION 1.3.290.0)
 
 add_definitions(-D${USE_PLATFORM})
 

@@ -33,3 +33,7 @@
 
 # Build folder
 build/
+
+# VS
+.vs/
+CMakeSettings.json

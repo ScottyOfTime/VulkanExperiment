@@ -266,7 +266,7 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 		return 0;
 	}
 
-	return devprops.properties.deviceType == /*VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&*/
+	return devprops.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
 		devfeats.geometryShader;
 }
 
@@ -283,6 +283,12 @@ EngineResult VulkanEngine::select_physical_device() {
 	VkPhysicalDevice *devs = (VkPhysicalDevice*)malloc(deviceCount * sizeof(VkPhysicalDevice));
 	if (instanceDispatch.vkEnumeratePhysicalDevices(instance, &deviceCount, devs) != VK_SUCCESS) {
 		ENGINE_ERROR("Failed to enumerate physical devices.");
+		free(devs);
+		return ENGINE_FAILURE;
+	}
+	// This check was implemented to shut VS up about a null pointer in the next lines of code
+	if (devs == NULL) {
+		ENGINE_ERROR("Failed to dereference device array.");
 		free(devs);
 		return ENGINE_FAILURE;
 	}
@@ -800,7 +806,7 @@ EngineResult VulkanEngine::init_background_pipelines() {
 	deviceDispatch.vkDestroyShaderModule(device, gradientShader, NULL);
 	deviceDispatch.vkDestroyShaderModule(device, skyShader, NULL);
 
-	mainDeletionQueue.push_function([&] {
+	mainDeletionQueue.push_function([=] {
 		deviceDispatch.vkDestroyPipelineLayout(device, gradientPipelineLayout, NULL);
 		deviceDispatch.vkDestroyPipeline(device, gradient.pipeline, NULL);
 		deviceDispatch.vkDestroyPipeline(device, sky.pipeline, NULL);
