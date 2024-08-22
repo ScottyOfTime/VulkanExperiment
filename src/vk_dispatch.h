@@ -96,6 +96,13 @@ struct DeviceDispatch {
 	PFN_vkCmdEndRendering vkCmdEndRendering;
 
 	PFN_vkCmdPushConstants vkCmdPushConstants;
+
+	PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines;
+
+	PFN_vkCmdSetViewport vkCmdSetViewport;
+	PFN_vkCmdSetScissor vkCmdSetScissor;
+
+	PFN_vkCmdDraw vkCmdDraw;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

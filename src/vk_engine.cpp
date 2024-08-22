@@ -726,6 +726,9 @@ EngineResult VulkanEngine::init_pipelines() {
 	if (init_background_pipelines() != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
+	if (init_triangle_pipeline() != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
 	return ENGINE_SUCCESS;
 }
 
@@ -931,8 +934,12 @@ EngineResult VulkanEngine::draw() {
 
 	draw_background(cmd);
 
+	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &deviceDispatch);
+
+	draw_geometry(cmd);
+
 	// Transition the draw image and the swapchain image into their correct trnasfer layouts
-	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		&deviceDispatch);
 	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		&deviceDispatch);
@@ -1108,6 +1115,103 @@ EngineResult VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImg
 	deviceDispatch.vkCmdBeginRendering(cmd, &rInfo);
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+	deviceDispatch.vkCmdEndRendering(cmd);
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult VulkanEngine::init_triangle_pipeline() {
+	VkShaderModule triangleFragShader;
+	if (!load_shader_module("../../shaders/colored_triangle.frag.spv", device, &triangleFragShader, &deviceDispatch)) {
+		ENGINE_ERROR("Failed to load colored_triangle.frag.spv shader module.");
+		return ENGINE_FAILURE;
+	}
+
+	VkShaderModule triangleVertexShader;
+	if (!load_shader_module("../../shaders/colored_triangle.vert.spv", device, &triangleVertexShader, &deviceDispatch)) {
+		ENGINE_ERROR("Failed to load colored_triangle.vert.spv shader module.");
+		return ENGINE_FAILURE;
+	}
+
+	VkPipelineLayoutCreateInfo ci = {};
+	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	ci.pNext = NULL;
+
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &trianglePipelineLayout));
+
+	PipelineBuilder pipelineBuilder;
+
+	pipelineBuilder.pipelineLayout = trianglePipelineLayout;
+	pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+	pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.set_multisampling_none();
+	pipelineBuilder.disable_blending();
+	pipelineBuilder.disable_depthtest();
+
+	pipelineBuilder.set_color_attachment_format(drawImage.imageFormat);
+	pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+	trianglePipeline = pipelineBuilder.build_pipeline(device, &deviceDispatch);
+
+	deviceDispatch.vkDestroyShaderModule(device, triangleFragShader, NULL);
+	deviceDispatch.vkDestroyShaderModule(device, triangleVertexShader, NULL);
+
+	mainDeletionQueue.push_function([&]() {
+		deviceDispatch.vkDestroyPipelineLayout(device, trianglePipelineLayout, NULL);
+		deviceDispatch.vkDestroyPipeline(device, trianglePipeline, NULL);
+	});
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
+	VkRenderingAttachmentInfo colorAttachment = {};
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.pNext = NULL;
+
+	colorAttachment.imageView = drawImage.imageView;
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo renderInfo = {};
+	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderInfo.pNext = NULL;
+
+	renderInfo.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, drawExtent };
+	renderInfo.layerCount = 1;
+	renderInfo.colorAttachmentCount = 1;
+	renderInfo.pColorAttachments = &colorAttachment;
+	renderInfo.pDepthAttachment = NULL;
+	renderInfo.pStencilAttachment = NULL;
+
+	deviceDispatch.vkCmdBeginRendering(cmd, &renderInfo);
+
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+
+	VkViewport viewport = {};
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = drawExtent.width;
+	viewport.height = drawExtent.height;
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	deviceDispatch.vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	VkRect2D scissor = {};
+	scissor.offset.x = 0;
+	scissor.offset.y = 0;
+	scissor.extent.width = drawExtent.width;
+	scissor.extent.height = drawExtent.height;
+
+	deviceDispatch.vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	//launch a draw command to draw 3 vertices
+	deviceDispatch.vkCmdDraw(cmd, 3, 1, 0, 0);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 

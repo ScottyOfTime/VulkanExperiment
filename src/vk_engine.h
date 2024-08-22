@@ -218,6 +218,13 @@ private:
 	void draw_background(VkCommandBuffer cmd);
 
 	EngineResult draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
+
+	// Triangle pipeline stuff
+	VkPipelineLayout trianglePipelineLayout;
+	VkPipeline trianglePipeline;
+
+	EngineResult init_triangle_pipeline();
+	EngineResult draw_geometry(VkCommandBuffer cmd);
 };
 
 #endif /* VK_ENGINE_H */

@@ -37,3 +37,6 @@ build/
 # VS
 .vs/
 CMakeSettings.json
+
+# Compiled shader SPVs
+*.spv

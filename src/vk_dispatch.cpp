@@ -98,4 +98,10 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 
 	disp->vkCmdPushConstants = (PFN_vkCmdPushConstants)disp->vkGetDeviceProcAddr(dev, "vkCmdPushConstants");
 
+	disp->vkCreateGraphicsPipelines = (PFN_vkCreateGraphicsPipelines)disp->vkGetDeviceProcAddr(dev, "vkCreateGraphicsPipelines");
+
+	disp->vkCmdSetViewport = (PFN_vkCmdSetViewport)disp->vkGetDeviceProcAddr(dev, "vkCmdSetViewport");
+	disp->vkCmdSetScissor = (PFN_vkCmdSetScissor)disp->vkGetDeviceProcAddr(dev, "vkCmdSetScissor");
+
+	disp->vkCmdDraw = (PFN_vkCmdDraw)disp->vkGetDeviceProcAddr(dev, "vkCmdDraw");
 }
