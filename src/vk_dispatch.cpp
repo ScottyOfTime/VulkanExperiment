@@ -91,6 +91,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 
 	disp->vkCmdBindPipeline = (PFN_vkCmdBindPipeline)disp->vkGetDeviceProcAddr(dev, "vkCmdBindPipeline");
 	disp->vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)disp->vkGetDeviceProcAddr(dev, "vkCmdBindDescriptorSets");
+	disp->vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer)disp->vkGetDeviceProcAddr(dev, "vkCmdBindIndexBuffer");
 	disp->vkCmdDispatch = (PFN_vkCmdDispatch)disp->vkGetDeviceProcAddr(dev, "vkCmdDispatch");
 
 	disp->vkCmdBeginRendering = (PFN_vkCmdBeginRendering)disp->vkGetDeviceProcAddr(dev, "vkCmdBeginRendering");
@@ -104,4 +105,8 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkCmdSetScissor = (PFN_vkCmdSetScissor)disp->vkGetDeviceProcAddr(dev, "vkCmdSetScissor");
 
 	disp->vkCmdDraw = (PFN_vkCmdDraw)disp->vkGetDeviceProcAddr(dev, "vkCmdDraw");
+	disp->vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)disp->vkGetDeviceProcAddr(dev, "vkCmdDrawIndexed");
+
+	disp->vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)disp->vkGetDeviceProcAddr(dev, "vkCmdCopyBuffer");
+	disp->vkGetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddress)disp->vkGetDeviceProcAddr(dev, "vkGetBufferDeviceAddress");
 }

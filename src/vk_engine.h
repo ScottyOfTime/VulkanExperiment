@@ -225,6 +225,20 @@ private:
 
 	EngineResult init_triangle_pipeline();
 	EngineResult draw_geometry(VkCommandBuffer cmd);
+
+	EngineResult create_buffer(AllocatedBuffer* buffer, size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void destroy_buffer(const AllocatedBuffer* buffer);
+
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
+	VkPipelineLayout meshPipelineLayout;
+	VkPipeline meshPipeline;
+
+	GPUMeshBuffers rectangle;
+
+	EngineResult init_mesh_pipeline();
+	// dummy mesh creation
+	void init_default_data();
 };
 
 #endif /* VK_ENGINE_H */

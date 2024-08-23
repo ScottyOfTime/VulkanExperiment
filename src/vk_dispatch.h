@@ -90,6 +90,7 @@ struct DeviceDispatch {
 
 	PFN_vkCmdBindPipeline vkCmdBindPipeline;
 	PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets;
+	PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer;
 	PFN_vkCmdDispatch vkCmdDispatch;
 
 	PFN_vkCmdBeginRendering vkCmdBeginRendering;
@@ -103,6 +104,10 @@ struct DeviceDispatch {
 	PFN_vkCmdSetScissor vkCmdSetScissor;
 
 	PFN_vkCmdDraw vkCmdDraw;
+	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
+
+	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+	PFN_vkGetBufferDeviceAddress vkGetBufferDeviceAddress;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);
