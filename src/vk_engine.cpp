@@ -1095,6 +1095,8 @@ EngineResult VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer c
 
 	VK_RUN_FN(deviceDispatch.vkWaitForFences(device, 1, &immFence, true, 9999999999),
 		"Failed to wait for fences");
+
+	return ENGINE_SUCCESS;
 }
 
 EngineResult VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
@@ -1142,7 +1144,8 @@ EngineResult VulkanEngine::init_triangle_pipeline() {
 	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	ci.pNext = NULL;
 
-	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &trianglePipelineLayout));
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &trianglePipelineLayout),
+		"Failed to create triangle pipeline layout.");
 
 	PipelineBuilder pipelineBuilder;
 
@@ -1246,7 +1249,10 @@ EngineResult VulkanEngine::create_buffer(AllocatedBuffer* buffer, size_t allocSi
 	vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
 	VK_RUN_FN(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo, &buffer->buffer, &buffer->allocation,
-		&buffer->info));
+		&buffer->info),
+		"Failed to create VMA buffer.");
+
+	return ENGINE_SUCCESS;
 }
 
 void VulkanEngine::destroy_buffer(const AllocatedBuffer* buffer) {
@@ -1326,7 +1332,8 @@ EngineResult VulkanEngine::init_mesh_pipeline() {
 	ci.pPushConstantRanges = &bufferRange;
 	ci.pushConstantRangeCount = 1;
 
-	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &meshPipelineLayout));
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &meshPipelineLayout),
+		"Failed to create mesh pipeline layout.");
 
 	PipelineBuilder pipelineBuilder;
 

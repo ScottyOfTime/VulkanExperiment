@@ -22,7 +22,7 @@
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_vulkan.h"
-#include "glm/vec4.hpp";
+#include "glm/vec4.hpp"
 
 /*---------------------------
  | MACROS
