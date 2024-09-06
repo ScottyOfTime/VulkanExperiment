@@ -151,6 +151,8 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect{ 0 };
 
+	GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
 private:
 	VmaAllocator allocator;
 	DeletionQueue mainDeletionQueue;
@@ -229,7 +231,6 @@ private:
 	EngineResult create_buffer(AllocatedBuffer* buffer, size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	void destroy_buffer(const AllocatedBuffer* buffer);
 
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
 	VkPipelineLayout meshPipelineLayout;
 	VkPipeline meshPipeline;

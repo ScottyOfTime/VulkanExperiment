@@ -4,7 +4,7 @@ add_executable(vulkan main.cpp)
 
 add_library(vulkanengine 
 	vk_engine.cpp vk_dispatch.cpp vk_images.cpp vk_descriptors.cpp
-	vk_pipelines.cpp
+	vk_pipelines.cpp vk_loader.cpp
 )
 
 if (WIN32)
@@ -19,6 +19,8 @@ if (WIN32)
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 		${PROJECT_SOURCE_DIR}/third-party/glm
+		${PROJECT_SOURCE_DIR}/third-party/tinygltf
+		${PROJECT_SOURCE_DIR}/third-party/stb_image
 	)
 	target_link_libraries(vulkan 
 		${CMAKE_SOURCE_DIR}/lib/SDL2.lib
@@ -39,6 +41,8 @@ elseif(UNIX)
 		$ENV{HOME}/SDL2/include
 		${PROJECT_SOURCE_DIR}/third-party/glm
 		${PROJECT_SOURCE_DIR}/third-party/imgui
+		${PROJECT_SOURCE_DIR}/third-party/tinygltf
+		${PROJECT_SOURCE_DIR}/third-party/stb_image
 	)
 	target_link_libraries(vulkan
 		vulkanengine

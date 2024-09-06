@@ -1,3 +1,6 @@
+#ifndef VK_TYPES_H
+#define VK_TYPES_H
+
 #include "vulkan/vulkan.h"
 #include "vk_mem_alloc.h"
 #include "vk_dispatch.h"
@@ -40,3 +43,5 @@ struct GPUDrawPushConstants {
 	glm::mat4 worldMatrix;
 	VkDeviceAddress vertexBuffer;
 };
+
+#endif /* VK_TYPES_H */

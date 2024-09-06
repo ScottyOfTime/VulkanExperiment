@@ -1259,7 +1259,7 @@ void VulkanEngine::destroy_buffer(const AllocatedBuffer* buffer) {
 	vmaDestroyBuffer(allocator, buffer->buffer, buffer->allocation);
 }
 
-GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
+GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
@@ -1385,7 +1385,7 @@ void VulkanEngine::init_default_data() {
 	rect_indices[4] = 1;
 	rect_indices[5] = 3;
 
-	rectangle = uploadMesh(rect_indices, rect_vertices);
+	rectangle = upload_mesh(rect_indices, rect_vertices);
 
 	mainDeletionQueue.push_function([&]() {
 		destroy_buffer(&rectangle.indexBuffer);

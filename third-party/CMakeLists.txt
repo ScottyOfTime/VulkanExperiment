@@ -1,2 +1,3 @@
 add_subdirectory(VulkanMemoryAllocator)
 add_subdirectory(imgui)
+add_subdirectory(tinygltf)
