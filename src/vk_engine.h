@@ -220,6 +220,7 @@ private:
 
 	// Draw resources
 	AllocatedImage drawImage;
+	AllocatedImage depthImage;
 	VkExtent2D drawExtent;
 
 	void draw_background(VkCommandBuffer cmd);

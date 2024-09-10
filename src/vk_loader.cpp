@@ -7,6 +7,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -14,7 +15,7 @@
 #include <tiny_gltf.h>
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, const char* filename) {
-	ENGINE_MESSAGE_ARGS("Loading glTF", filename);
+	ENGINE_MESSAGE_ARGS("Loading glTF %s", filename);
 
 	tinygltf::TinyGLTF gltfContext;
 	tinygltf::Model gltfModel;
@@ -51,64 +52,88 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 		indices.clear();
 		vertices.clear();
 
-		for (auto&& p : mesh.primitives) {
+		for (size_t i = 0; i < mesh.primitives.size(); i++) {
+			const tinygltf::Primitive& p = mesh.primitives[i];
 			GeoSurface newSurface;
-			newSurface.startIndex = (uint32_t)indices.size();
-			newSurface.count = (uint32_t)gltfModel.accessors[p.indices].count;
+			newSurface.startIndex = static_cast<uint32_t>(indices.size());
+			newSurface.count = static_cast<uint32_t>(gltfModel.accessors[p.indices].count);
+			uint32_t vertexStart = static_cast<uint32_t>(vertices.size());
+			uint32_t indexCount = 0;
 
-			size_t initial_vtx = vertices.size();
-
-			// load indexes
+			// vertices
 			{
-				tinygltf::Accessor indexAccessor = gltfModel.accessors[p.indices];
-				indices.reserve(indices.size() + indexAccessor.count);
-				tinygltf::BufferView indexBufferView = gltfModel.bufferViews[indexAccessor.bufferView];
+				const float* positionBuffer = nullptr;
+				const float* normalsBuffer = nullptr;
+				const float* texCoordsBuffer = nullptr;
+				size_t vertexCount = 0;
 
-				for (size_t i = 0; i < indexAccessor.count; i++) {
-					indices.push_back(gltfModel.buffers[indexBufferView.buffer].data[i + indexBufferView.byteOffset]);
+				// get buffer data for vertex positions
+				if (p.attributes.find("POSITION") != p.attributes.end()) {
+					const tinygltf::Accessor& accessor = gltfModel.accessors[p.attributes.find("POSITION")->second];
+					const tinygltf::BufferView& view = gltfModel.bufferViews[accessor.bufferView];
+					positionBuffer = reinterpret_cast<const float*>(&(gltfModel.buffers[view.buffer].data[accessor.byteOffset + view.byteOffset]));
+					vertexCount = accessor.count;
 				}
-			}
-			
-			// load vertex positions
-			{
-				tinygltf::Accessor posAccessor = gltfModel.accessors[p.attributes.at("POSITION")];
-				vertices.resize(vertices.size() + posAccessor.count);
-				tinygltf::BufferView& posBufferView = gltfModel.bufferViews[posAccessor.bufferView];
 
-				for (size_t i = 0; i < posAccessor.count; i++) {
-					glm::vec3 v = (glm::vec3)gltfModel.buffers[posBufferView.buffer].data[i + posBufferView.byteOffset];
+				// get buffer data for vertex normals
+				if (p.attributes.find("NORMAL") != p.attributes.end()) {
+					const tinygltf::Accessor& accessor = gltfModel.accessors[p.attributes.find("NORMAL")->second];
+					const tinygltf::BufferView& view = gltfModel.bufferViews[accessor.bufferView];
+					normalsBuffer = reinterpret_cast<const float*>(&(gltfModel.buffers[view.buffer].data[accessor.byteOffset + view.byteOffset]));
+				}
+
+				// get buffer data for vertex texture coordinates
+				if (p.attributes.find("TEXCOORD_0") != p.attributes.end()) {
+					const tinygltf::Accessor& accessor = gltfModel.accessors[p.attributes.find("TEXCOORD_0")->second];
+					const tinygltf::BufferView& view = gltfModel.bufferViews[accessor.bufferView];
+					texCoordsBuffer = reinterpret_cast<const float*>(&(gltfModel.buffers[view.buffer].data[accessor.byteOffset + view.byteOffset]));
+				}
+
+				// append data to vertices
+				for (size_t v = 0; v < vertexCount; v++) {
 					Vertex newvtx;
-					// memcpy(&newvtx.position, v, sizeof(newvtx.position));
-					newvtx.position = v;
-					newvtx.normal = { 1, 0, 0 };
-					newvtx.color = glm::vec4 { 1.f };
-					newvtx.uv_x = 0;
-					newvtx.uv_y = 0;
-					vertices[initial_vtx + i] = newvtx;
+					newvtx.position = glm::vec4(glm::make_vec3(&positionBuffer[v * 3]), 1.0f);
+					newvtx.normal = glm::normalize(glm::vec3(normalsBuffer ? glm::make_vec3(&normalsBuffer[v * 3]) :
+						glm::vec3(0.0f)));
+					glm::vec2 uv = texCoordsBuffer ? glm::make_vec2(&texCoordsBuffer[v * 2]) : glm::vec2(0.0f);
+					newvtx.uv_x = uv.x;
+					newvtx.uv_y = uv.y;
+					newvtx.color = glm::vec4(1.0f);
+					vertices.push_back(newvtx);
 				}
 			}
 
-			for (auto& attrib : p.attributes) {
-				tinygltf::Accessor accessor = gltfModel.accessors[attrib.second];
-				tinygltf::BufferView bufferView = gltfModel.bufferViews[accessor.bufferView];
-				int byteStride = accessor.ByteStride(gltfModel.bufferViews[accessor.bufferView]);
+			// indices
+			{
+				const tinygltf::Accessor& accessor = gltfModel.accessors[p.indices];
+				const tinygltf::BufferView& bufferView = gltfModel.bufferViews[accessor.bufferView];
+				const tinygltf::Buffer& buffer = gltfModel.buffers[bufferView.buffer];
+				indices.reserve(indices.size() + accessor.count);
 
-				if (attrib.first.compare("NORMAL") == 0) {
+				switch (accessor.componentType) {
+				case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT: {
+					const uint32_t* buf = reinterpret_cast<const uint32_t*>(&buffer.data[accessor.byteOffset + bufferView.byteOffset]);
 					for (size_t i = 0; i < accessor.count; i++) {
-						glm::vec3 v = (glm::vec3)gltfModel.buffers[bufferView.buffer].data.at(i + bufferView.byteOffset);
-						vertices[initial_vtx + i].normal = v;
+						indices.push_back(buf[i] + vertexStart);
 					}
-				} else if (attrib.first.compare("TEXCOORD_0") == 0) {
+					break;
+				}
+				case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT: {
+					const uint16_t* buf = reinterpret_cast<const uint16_t*>(&buffer.data[accessor.byteOffset + bufferView.byteOffset]);
 					for (size_t i = 0; i < accessor.count; i++) {
-						glm::vec2 v = (glm::vec2)gltfModel.buffers[bufferView.buffer].data.at(i + bufferView.byteOffset);
-						vertices[initial_vtx + i].uv_x = v.x;
-						vertices[initial_vtx + i].uv_y = v.y;
+						indices.push_back(buf[i] + vertexStart);
 					}
-				} else if (attrib.first.compare("COLOR_0") == 0) {
+					break;
+				}
+				case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE: {
+					const uint8_t* buf = reinterpret_cast<const uint8_t*>(&buffer.data[accessor.byteOffset + bufferView.byteOffset]);
 					for (size_t i = 0; i < accessor.count; i++) {
-						glm::vec4 v = (glm::vec4)gltfModel.buffers[bufferView.buffer].data.at(i + bufferView.byteOffset);
-						vertices[initial_vtx + i].color = v;
+						indices.push_back(buf[i] + vertexStart);
 					}
+					break;
+				}
+				default:
+					ENGINE_ERROR("Index component type unrecognized");
 				}
 			}
 			newmesh.surfaces.push_back(newSurface);
