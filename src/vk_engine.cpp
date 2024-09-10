@@ -56,6 +56,12 @@ void VulkanEngine::deinit() {
 		deviceDispatch.vkDeviceWaitIdle(device);
 		ENGINE_MESSAGE("Waiting for device to idle.");
 	}
+	for (auto& mesh : testMeshes) {
+		destroy_buffer(&mesh->meshBuffers.indexBuffer);
+		destroy_buffer(&mesh->meshBuffers.vertexBuffer);
+	}
+
+
 	mainDeletionQueue.flush();
 	ENGINE_MESSAGE("Flushing main deletor queue.")
 
@@ -1224,7 +1230,23 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
 	GPUDrawPushConstants pushConstants;
-	pushConstants.worldMatrix = glm::mat4{ 1.f };
+
+	// model matrix
+	glm::mat4 modelMatrix = glm::mat4(1.0f);
+	// view matrix
+	glm::mat4 viewMatrix = glm::lookAt(
+		glm::vec3(0.0f, 0.0f, 5.0f),	// camera position
+		glm::vec3(0.0f, 0.0f, 0.0f),	// looking at origin
+		glm::vec3(0.0f, -1.0f, 0.0f)		// up direction
+	);
+	// projection matrix
+
+	glm::mat4 projectionMatrix = glm::perspective(glm::radians(45.f),
+		(float)drawExtent.width / (float)drawExtent.height, 0.1f, 100.0f);
+
+	projectionMatrix[1][1] *= -1;
+
+	pushConstants.worldMatrix = projectionMatrix * viewMatrix * modelMatrix;
 	pushConstants.vertexBuffer = rectangle.vertexBufferAddress;
 
 	deviceDispatch.vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
@@ -1233,13 +1255,15 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	deviceDispatch.vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
-	pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+	// draw mesh
+
+	pushConstants.vertexBuffer = testMeshes[0]->meshBuffers.vertexBufferAddress;
 
 	deviceDispatch.vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
 		&pushConstants);
-	deviceDispatch.vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	deviceDispatch.vkCmdBindIndexBuffer(cmd, testMeshes[0]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-	deviceDispatch.vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
+	deviceDispatch.vkCmdDrawIndexed(cmd, testMeshes[0]->surfaces[0].count, 1, testMeshes[0]->surfaces[0].startIndex, 0, 0);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 

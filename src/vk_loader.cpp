@@ -34,7 +34,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 	if (!res) {
 		ENGINE_ERROR("Failed to load glTF");
 	} else {
-		ENGINE_MESSAGE_ARGS("Loaded glTF", filename);
+		ENGINE_MESSAGE_ARGS("Loaded glTF %s", filename);
 	}
 
 	std::vector<std::shared_ptr<MeshAsset>> meshes;
@@ -47,7 +47,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 
 		newmesh.name = mesh.name;
 
-		// clear the mesh arrays each mesh, we ont want to merge them by error
+		// clear the mesh arrays each mesh, we dont want to merge them by error
 		indices.clear();
 		vertices.clear();
 
@@ -62,17 +62,17 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 			{
 				tinygltf::Accessor indexAccessor = gltfModel.accessors[p.indices];
 				indices.reserve(indices.size() + indexAccessor.count);
-				tinygltf::BufferView indexBufferView = gltfModel.bufferViews.at(indexAccessor.bufferView);
+				tinygltf::BufferView indexBufferView = gltfModel.bufferViews[indexAccessor.bufferView];
 
 				for (size_t i = 0; i < indexAccessor.count; i++) {
-					indices.push_back(gltfModel.buffers[indexBufferView.buffer].data.at(i + indexBufferView.byteOffset));
+					indices.push_back(gltfModel.buffers[indexBufferView.buffer].data[i + indexBufferView.byteOffset]);
 				}
 			}
 			
 			// load vertex positions
 			{
 				tinygltf::Accessor posAccessor = gltfModel.accessors[p.attributes.at("POSITION")];
-				vertices.reserve(vertices.size() + posAccessor.count);
+				vertices.resize(vertices.size() + posAccessor.count);
 				tinygltf::BufferView& posBufferView = gltfModel.bufferViews[posAccessor.bufferView];
 
 				for (size_t i = 0; i < posAccessor.count; i++) {
@@ -111,6 +111,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 					}
 				}
 			}
+			newmesh.surfaces.push_back(newSurface);
 		}
 
 		constexpr bool OverrideColors = true;

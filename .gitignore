@@ -33,6 +33,7 @@
 
 # Build folder
 build/
+build-x64-Debug/
 
 # VS
 .vs/
