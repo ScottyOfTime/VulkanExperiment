@@ -22,7 +22,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 	std::string err;
 	std::string warn;
 
-	bool res = gltfContext.LoadASCIIFromFile(&gltfModel, &err, &warn, filename);
+	bool res = gltfContext.LoadBinaryFromFile(&gltfModel, &err, &warn, filename);
 	if (!warn.empty()) {
 		ENGINE_WARNING("glTF loader warning");
 	}
@@ -107,6 +107,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 				} else if (attrib.first.compare("COLOR_0") == 0) {
 					for (size_t i = 0; i < accessor.count; i++) {
 						glm::vec4 v = (glm::vec4)gltfModel.buffers[bufferView.buffer].data.at(i + bufferView.byteOffset);
+						vertices[initial_vtx + i].color = v;
 					}
 				}
 			}

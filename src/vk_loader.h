@@ -4,6 +4,7 @@
 #include "vk_types.h"
 #include <unordered_map>
 #include <filesystem>
+#include <optional>
 
 struct GeoSurface {
 	uint32_t startIndex;
@@ -18,5 +19,7 @@ struct MeshAsset {
 
 // forward declaration
 class VulkanEngine;
+
+std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, const char* filename);
 
 #endif /* VK_LOADER_H */

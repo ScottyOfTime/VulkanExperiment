@@ -16,6 +16,7 @@
 #include "vk_types.h"
 #include "vk_descriptors.h"
 #include "vk_pipelines.h"
+#include "vk_loader.h"
 #include "SDL.h"
 #include "SDL_vulkan.h"
 #include "vk_mem_alloc.h"
@@ -240,6 +241,8 @@ private:
 	EngineResult init_mesh_pipeline();
 	// dummy mesh creation
 	void init_default_data();
+
+	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 };
 
 #endif /* VK_ENGINE_H */
