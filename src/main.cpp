@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 	SDL_Window *win = SDL_CreateWindow("Vulkan Demo", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-			1280, 720, SDL_WINDOW_VULKAN);
+			1280, 720, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 	if (win == NULL) {
 		fprintf(stderr, "[Main] SDL Window creation failed: %s\n", SDL_GetError());
 	}
@@ -39,11 +39,19 @@ int main(int argc, char* argv[])
 			ImGui_ImplSDL2_ProcessEvent(&e);
 		}
 
+		if (vk->resizeRequested) {
+			if (vk->resize_swapchain() != ENGINE_SUCCESS) {
+				fprintf(stderr, "[Main] Failed to resize swapchain.\n");
+				quit = true;
+			}
+		}
+
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
 		if (ImGui::Begin("background")) {
+			ImGui::SliderFloat("Render Scale", &vk->renderScale, 0.3f, 1.f);
 
 			ComputeEffect& selected = vk->backgroundEffects[vk->currentBackgroundEffect];
 

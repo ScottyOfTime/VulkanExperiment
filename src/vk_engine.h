@@ -52,7 +52,7 @@
 	fprintf(stderr, "[VulkanEngine] ERR: " MSG "\n");
 
 #define ENGINE_RUN_FN(FN) \
-	if (FN() != ENGINE_SUCCESS) { \
+	if (FN != ENGINE_SUCCESS) { \
 		return ENGINE_FAILURE; \
 	}
 
@@ -79,15 +79,25 @@ const std::array<const char*, 1> vkDeviceExtensions = {
 };
 
 struct DeletionQueue {
-	std::deque<std::function<void()>> deletors;
+	// this struct is for debugging purposes so you can tell
+	// what function is being called per iteration in flush()
+	struct NamedFunc {
+		const char* name;
+		std::function<void()> func;
+	};
+	std::deque<NamedFunc> deletors;
 
-	void push_function(std::function<void()>&& fn) {
-		deletors.push_back(fn);
+	void push_function(const char* name, std::function<void()>&& fn) {
+		deletors.push_back(NamedFunc{
+			.name = name,
+			.func = std::move(fn)
+		});
 	}
 
 	void flush() {
 		for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
-			(*it)();
+			fprintf(stderr, "[DeletorsQueue] Calling function %s\n", it->name);
+			it->func();
 		}
 		deletors.clear();
 	}
@@ -107,6 +117,7 @@ struct FrameData {
 	VkFence renderFence = NULL;
 
 	DeletionQueue deletionQueue;
+	DescriptorAllocatorGrowable frameDescriptors;
 };
 
 struct ComputePushConstants {
@@ -125,6 +136,15 @@ struct ComputeEffect {
 	ComputePushConstants data;
 };
 
+struct GPUSceneData {
+	glm::mat4 view;
+	glm::mat4 proj;
+	glm::mat4 viewproj;
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection;
+	glm::vec4 sunlightColor;
+};
+
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 /*---------------------------
@@ -136,7 +156,13 @@ public:
 	EngineResult init(SDL_Window *win);
 	void deinit();
 
+	VkExtent2D windowExtent{ 1280, 720 };
+
 	EngineResult draw();
+	float renderScale = 1.f;
+
+	bool resizeRequested = false;
+	EngineResult resize_swapchain();
 
 	DescriptorAllocator descriptorAllocator;
 	VkDescriptorSet drawImageDescriptors;
@@ -169,6 +195,7 @@ private:
 	HMODULE lib;
 #endif
 	EngineResult link();
+	int shutdown = 0;
 
 	InstanceDispatch instanceDispatch;
 
@@ -199,7 +226,9 @@ private:
 	std::vector<VkImage> swapchainImgs;
 	std::vector<VkImageView> swapchainImgViews;
 	VkExtent2D swapchainExtent;
-	EngineResult create_swapchain();
+	EngineResult create_swapchain(uint32_t width, uint32_t height);
+	EngineResult init_swapchain();
+	EngineResult destroy_swapchain();
 
 	struct FrameData frames[FRAME_OVERLAP];
 	uint32_t frameNumber = 0;
@@ -223,31 +252,33 @@ private:
 	AllocatedImage depthImage;
 	VkExtent2D drawExtent;
 
+
 	void draw_background(VkCommandBuffer cmd);
 
 	EngineResult draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
 
-	// Triangle pipeline stuff
-	VkPipelineLayout trianglePipelineLayout;
-	VkPipeline trianglePipeline;
-
-	EngineResult init_triangle_pipeline();
 	EngineResult draw_geometry(VkCommandBuffer cmd);
 
 	EngineResult create_buffer(AllocatedBuffer* buffer, size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	void destroy_buffer(const AllocatedBuffer* buffer);
+	// these two values should be equal by end of program, if not
+	// indicates bug
+	uint32_t buffersCreated = 0;
+	uint32_t buffersDestroyed = 0;
 
 
 	VkPipelineLayout meshPipelineLayout;
 	VkPipeline meshPipeline;
 
-	GPUMeshBuffers rectangle;
-
 	EngineResult init_mesh_pipeline();
-	// dummy mesh creation
+	// dummy mesh creation <- now being loaded from glb
 	void init_default_data();
 
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
+	// scene data and its descriptor layout
+	GPUSceneData sceneData;
+	VkDescriptorSetLayout gpuSceneDataDescLayout;
 };
 
 #endif /* VK_ENGINE_H */
