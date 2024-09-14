@@ -1,6 +1,8 @@
 #ifndef VK_ENGINE_H
 #define VK_ENGINE_H
 
+// #define ENGINE_VERBOSE
+
 #include <stdio.h>
 #include <cmath>
 #include <string.h>
@@ -17,11 +19,11 @@
 #include "vk_descriptors.h"
 #include "vk_pipelines.h"
 #include "vk_loader.h"
-#include "SDL.h"
-#include "SDL_vulkan.h"
+#include "SDL3/SDL.h"
+#include "SDL3/SDL_vulkan.h"
 #include "vk_mem_alloc.h"
 #include "imgui.h"
-#include "backends/imgui_impl_sdl2.h"
+#include "backends/imgui_impl_sdl3.h"
 #include "backends/imgui_impl_vulkan.h"
 #include "glm/glm.hpp"
 #include "glm/vec4.hpp"
@@ -78,9 +80,17 @@ const std::array<const char*, 1> vkDeviceExtensions = {
 	"VK_KHR_swapchain"
 };
 
+struct Camera {
+	glm::vec3 pos;
+	glm::vec3 center;
+	glm::vec3 up;
+};
+
 struct DeletionQueue {
 	// this struct is for debugging purposes so you can tell
 	// what function is being called per iteration in flush()
+	// this will be slow but honestly suding std::function is already
+	// dubious so will be passed in later optimization
 	struct NamedFunc {
 		const char* name;
 		std::function<void()> func;
@@ -96,7 +106,9 @@ struct DeletionQueue {
 
 	void flush() {
 		for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
+#ifdef ENGINE_VERBOSE
 			fprintf(stderr, "[DeletorsQueue] Calling function %s\n", it->name);
+#endif
 			it->func();
 		}
 		deletors.clear();
@@ -183,6 +195,12 @@ public:
 	int currentBackgroundEffect{ 0 };
 
 	GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
+	Camera camera = { 
+		.pos = glm::vec3{ 0, 0, -3 },
+		.center = glm::vec3{0, 0, 0},
+		.up = glm::vec3{0, 1, 0}
+	};
 
 private:
 	VmaAllocator allocator;
@@ -279,6 +297,25 @@ private:
 	// scene data and its descriptor layout
 	GPUSceneData sceneData;
 	VkDescriptorSetLayout gpuSceneDataDescLayout;
+
+	// image creation and deletion
+	EngineResult create_image(AllocatedImage* img, VkExtent3D size, VkFormat format, 
+		VkImageUsageFlags usage, bool mipmapped = false);
+	EngineResult create_image_with_data(AllocatedImage* img, void* data, VkExtent3D size, 
+		VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	void destroy_image(const AllocatedImage* img);
+
+	// default image textures and samplers plus a descriptor set layout
+	// for textured images
+	AllocatedImage whiteImage;
+	AllocatedImage blackImage;
+	AllocatedImage greyImage;
+	AllocatedImage errorCheckerboardImage;
+
+	VkSampler defaultSamplerLinear;
+	VkSampler defaultSamplerNearest;
+
+	VkDescriptorSetLayout singleImageDescriptorLayout;
 };
 
 #endif /* VK_ENGINE_H */

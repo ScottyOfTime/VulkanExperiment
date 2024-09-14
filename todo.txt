@@ -1,0 +1,24 @@
+<<< TO DO >>>
+
+--> Camera Movement
+	--> WASD to move with mouse look around
+	--> Maybe actually learn about the mathematics of 3D computer graphics
+
+--> PBR
+
+--> Application Level API
+	--> Renderable struct 
+
+<<< BUGS >>>
+
+--> Vulkan warning about descriptor sets that aren't destroyed
+
+<<< CLEANUP >>>
+
+--> Indent member function and variables and group them logivally
+
+--> [LOW PRIO] Remove usage of STL containers and replace with pure arrays
+	--> Benchmark this to find out if it is even worth doing
+
+--> [LOW PRIO] Purge std::shared_ptr and std::unique_ptr from codebase
+	--> Use normal pointers because we are in the wild west

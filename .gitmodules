@@ -7,9 +7,9 @@
 [submodule "third-party/glm"]
 	path = third-party/glm
 	url = git@github.com:g-truc/glm.git
-[submodule "third-party/fastgltf"]
-	path = third-party/fastgltf
-	url = git@github.com:spnda/fastgltf.git
 [submodule "third-party/tinygltf"]
 	path = third-party/tinygltf
 	url = git@github.com:syoyo/tinygltf.git
+[submodule "third-party/SDL"]
+	path = third-party/SDL
+	url = https://github.com/libsdl-org/SDL

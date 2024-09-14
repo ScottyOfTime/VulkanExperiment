@@ -107,7 +107,11 @@ struct DeviceDispatch {
 	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 
 	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+	PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage;
 	PFN_vkGetBufferDeviceAddress vkGetBufferDeviceAddress;
+
+	PFN_vkCreateSampler vkCreateSampler;
+	PFN_vkDestroySampler vkDestroySampler;
 };
 
 void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr, VkInstance inst, VkDevice dev);

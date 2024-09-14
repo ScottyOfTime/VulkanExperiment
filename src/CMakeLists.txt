@@ -9,13 +9,13 @@ add_library(vulkanengine
 
 if (WIN32)
 	target_include_directories(vulkan PUBLIC
-		C:/devel/SDL2-VC/include
+		C:/devel/SDL/include/
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 		${PROJECT_SOURCE_DIR}/third-party/glm
 	)
 	target_include_directories(vulkanengine PRIVATE
-		C:/devel/SDL2-VC/include
+		C:/devel/SDL/include/
 		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 		${PROJECT_SOURCE_DIR}/third-party/glm
@@ -23,9 +23,7 @@ if (WIN32)
 		${PROJECT_SOURCE_DIR}/third-party/stb_image
 	)
 	target_link_libraries(vulkan 
-		${CMAKE_SOURCE_DIR}/lib/SDL2.lib
-		${CMAKE_SOURCE_DIR}/lib/SDL2main.lib
-		${CMAKE_SOURCE_DIR}/lib/SDL2test.lib
+		SDL3::SDL3
 		vulkanengine
 	)
 elseif(UNIX)

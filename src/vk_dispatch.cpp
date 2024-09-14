@@ -108,5 +108,9 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)disp->vkGetDeviceProcAddr(dev, "vkCmdDrawIndexed");
 
 	disp->vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)disp->vkGetDeviceProcAddr(dev, "vkCmdCopyBuffer");
+	disp->vkCmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage)disp->vkGetDeviceProcAddr(dev, "vkCmdCopyBufferToImage");
 	disp->vkGetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddress)disp->vkGetDeviceProcAddr(dev, "vkGetBufferDeviceAddress");
+
+	disp->vkCreateSampler = (PFN_vkCreateSampler)disp->vkGetDeviceProcAddr(dev, "vkCreateSampler");
+	disp->vkDestroySampler = (PFN_vkDestroySampler)disp->vkGetDeviceProcAddr(dev, "vkDestroySampler");
 }
