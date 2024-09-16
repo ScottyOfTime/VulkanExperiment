@@ -21,4 +21,3 @@ add_definitions(-D${USE_PLATFORM})
 add_subdirectory(third-party)
 
 add_subdirectory(src)
-

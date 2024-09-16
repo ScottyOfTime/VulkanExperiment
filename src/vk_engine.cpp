@@ -1252,7 +1252,7 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthAttachment.clearValue.depthStencil.depth = 0.f;
+	depthAttachment.clearValue.depthStencil.depth = 1.f;
 
 
 	VkRenderingInfo renderInfo = {};
@@ -1304,15 +1304,11 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	GPUDrawPushConstants pushConstants;
 
-	glm::mat4 view = glm::lookAt(
-		camera.pos,
-		camera.center,
-		camera.up
-	);
+	glm::mat4 view = camera.calcViewMat();
 	glm::mat4 proj = glm::perspective(
 		glm::radians(45.f),
 		(float)drawExtent.width / (float)drawExtent.height,
-		0.1f, 10000.f
+		0.1f, 1000.f
 	);
 	proj[1][1] *= -1;
 
@@ -1467,7 +1463,7 @@ EngineResult VulkanEngine::init_mesh_pipeline() {
 	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 	pipelineBuilder.set_multisampling_none();
 	pipelineBuilder.disable_blending();
-	pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+	pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_LESS);
 
 	pipelineBuilder.set_color_attachment_format(drawImage.imageFormat);
 	pipelineBuilder.set_depth_format(depthImage.imageFormat);

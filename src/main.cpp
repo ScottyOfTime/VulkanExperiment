@@ -6,9 +6,15 @@
 #include "backends/imgui_impl_vulkan.h"
 #include "backends/imgui_impl_sdl3.h"
 
+enum Mode {
+	PLAY,
+	EDIT
+};
+
 int main(int argc, char* argv[])
 {
-	int quit;
+	uint8_t quit;
+	Mode mode = PLAY;
 	printf("[Main] Running vulkan demo.\n");
 	
 	if (SDL_Init(SDL_INIT_VIDEO) != SDL_TRUE) {
@@ -26,44 +32,63 @@ int main(int argc, char* argv[])
 		goto cleanup;
 	}
 
-	SDL_SetWindowRelativeMouseMode(win, SDL_TRUE);
+	//SDL_SetWindowRelativeMouseMode(win, SDL_TRUE);
 	
 	quit = 0;
 	SDL_Event e;
 	while (!quit) {
+		switch (mode) {
+			case PLAY:
+				SDL_SetWindowRelativeMouseMode(win, SDL_TRUE);
+				break;
+			case EDIT:
+				SDL_SetWindowRelativeMouseMode(win, SDL_FALSE);
+				break;
+		}
 		while (SDL_PollEvent(&e)) {
 			switch (e.type) {
 				case SDL_EVENT_QUIT:
 					quit = 1;
 					break;
+				case SDL_EVENT_KEY_DOWN:
+					switch (e.key.key) {
+						case SDLK_ESCAPE:
+							mode = mode == PLAY ? EDIT : PLAY;
+					}
 			}
 
 			ImGui_ImplSDL3_ProcessEvent(&e);
 		}
 
+		//> Camera stuff should really belong elsewhere but probably
+		//> exit elsewhere but also not within renderer except for
+		//> position
+
 		const SDL_bool* keyStates = SDL_GetKeyboardState(NULL);
 		if (keyStates[SDL_SCANCODE_W]) {
-			vk->camera.pos.z += 1 * 0.001f;
-			vk->camera.center.z += 1 * 0.001f;
+			vk->camera.vel.z = -1 / 100.f;
 		}
 		if (keyStates[SDL_SCANCODE_A]) {
-			vk->camera.pos.x += 1 * 0.001f;
-			vk->camera.center.x += 1 * 0.001f;
+			vk->camera.vel.x = -1 / 100.f;
 		}
 		if (keyStates[SDL_SCANCODE_S]) {
-			vk->camera.pos.z -= 1 * 0.001f;
-			vk->camera.center.z -= 1 * 0.001f;
+			vk->camera.vel.z = 1 / 100.f;
 		}
 		if (keyStates[SDL_SCANCODE_D]) {
-			vk->camera.pos.x -= 1 * 0.001f;
-			vk->camera.center.x -= 1 * 0.001f;
+			vk->camera.vel.x = 1 / 100.f;
 		}
 
 		float x, y;
 		SDL_GetRelativeMouseState(&x, &y);
-		vk->camera.center.x -= x * 0.001f;
-		vk->camera.center.y -= y * 0.001f;
+		if (mode == PLAY) {
+			vk->camera.yaw += x / 500.f;
+			vk->camera.pitch -= y / 500.f;
 
+			vk->camera.pos += glm::vec3(vk->camera.calcRotationMat() * glm::vec4(vk->camera.vel * 0.5f, 0.f));
+		}
+		vk->camera.vel = { 0, 0, 0 };
+
+		//> Camera stuff end
 
 		if (vk->resizeRequested) {
 			if (vk->resize_swapchain() != ENGINE_SUCCESS) {
@@ -78,7 +103,7 @@ int main(int argc, char* argv[])
 
 		if (ImGui::Begin("background")) {
 			ImGui::SliderFloat("Render Scale", &vk->renderScale, 0.3f, 1.f);
-			ImGui::Text("Mouse Position: %d, %d", x, y);
+			ImGui::Text("Mode: %s", mode ? "EDIT" : "PLAY");
 
 			ComputeEffect& selected = vk->backgroundEffects[vk->currentBackgroundEffect];
 

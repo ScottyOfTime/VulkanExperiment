@@ -1,10 +1,19 @@
 <<< TO DO >>>
 
+--> Game directory
+	--> Now that the renderer has full potential functionality (already static linked as library)
+		start making the game files as well
+
 --> Camera Movement
-	--> WASD to move with mouse look around
+	--> Put actually camera functionality and operations out of main loop
 	--> Maybe actually learn about the mathematics of 3D computer graphics
 
+--> Basic lighting
+	--> frag shader lighting
+
 --> PBR
+
+--> Screen to world raycasting
 
 --> Application Level API
 	--> Renderable struct 
@@ -15,7 +24,7 @@
 
 <<< CLEANUP >>>
 
---> Indent member function and variables and group them logivally
+--> Indent member function and variables and group them logically
 
 --> [LOW PRIO] Remove usage of STL containers and replace with pure arrays
 	--> Benchmark this to find out if it is even worth doing
