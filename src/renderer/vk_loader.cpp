@@ -1,4 +1,3 @@
-#include "stb_image.h"
 #include <iostream>
 #include "vk_loader.h"
 
@@ -43,7 +42,9 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 	std::vector<uint32_t> indices;
 	std::vector<Vertex> vertices;
 
+	int mesh_count = 0;
 	for (tinygltf::Mesh& mesh : gltfModel.meshes) {
+		mesh_count++;
 		MeshAsset newmesh;
 
 		newmesh.name = mesh.name;
@@ -146,9 +147,13 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 			}
 		}
 		newmesh.meshBuffers = engine->upload_mesh(indices, vertices);
+		fprintf(stderr, "[GLTF Loader] Found %d vertices.\n", vertices.size());
+		fprintf(stderr, "[GLTF Loader] Created %d surfaces.\n",
+			newmesh.surfaces.size());
 
 		meshes.emplace_back(std::make_shared<MeshAsset>(std::move(newmesh)));
 	}
 
+	fprintf(stderr, "Found %d meshes\n", mesh_count);
 	return meshes;
 }

@@ -13,3 +13,6 @@
 [submodule "third-party/SDL"]
 	path = third-party/SDL
 	url = https://github.com/libsdl-org/SDL
+[submodule "third-party/glslang"]
+	path = third-party/glslang
+	url = git@github.com:KhronosGroup/glslang.git

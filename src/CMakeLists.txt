@@ -1,58 +1,28 @@
-#find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+# Build the renderer library first, obviously
+add_subdirectory(renderer) # Builds the vulkanengine library
 
-add_executable(vulkan main.cpp)
-
-add_library(vulkanengine 
-	vk_engine.cpp vk_dispatch.cpp vk_images.cpp vk_descriptors.cpp
-	vk_pipelines.cpp vk_loader.cpp
-)
+add_executable(vulkan main.cpp game.cpp)
 
 if (WIN32)
-	target_include_directories(vulkan PUBLIC
+	target_include_directories(vulkan PRIVATE
 		C:/devel/SDL/include/
-		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
+		${VULKAN_SDK}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
-		${PROJECT_SOURCE_DIR}/third-party/glm
 	)
-	target_include_directories(vulkanengine PRIVATE
-		C:/devel/SDL/include/
-		C:/VulkanSDK/${VULKAN_SDK_VERSION}/Include
-		${PROJECT_SOURCE_DIR}/third-party/imgui
-		${PROJECT_SOURCE_DIR}/third-party/glm
-		${PROJECT_SOURCE_DIR}/third-party/tinygltf
-		${PROJECT_SOURCE_DIR}/third-party/stb_image
-	)
-	target_link_libraries(vulkan 
-		SDL3::SDL3
+	target_link_libraries(vulkan PRIVATE
 		vulkanengine
 	)
 elseif(UNIX)
+	# @Todo -> Been developing mostly on win recently so this is old
 	find_package(SDL2 REQUIRED)
 	target_include_directories(vulkan PUBLIC
 		$ENV{VULKAN_SDK}/include
 		$ENV{HOME}/SDL2/include
-		${PROJECT_SOURCE_DIR}/third-party/glm
 		${PROJECT_SOURCE_DIR}/third-party/imgui
-	)
-	target_include_directories(vulkanengine PUBLIC
-		$ENV{VULKAN_SDK}/include
-		$ENV{HOME}/SDL2/include
-		${PROJECT_SOURCE_DIR}/third-party/glm
-		${PROJECT_SOURCE_DIR}/third-party/imgui
-		${PROJECT_SOURCE_DIR}/third-party/tinygltf
-		${PROJECT_SOURCE_DIR}/third-party/stb_image
 	)
 	target_link_libraries(vulkan
 		vulkanengine
 		${SDL2_LIBRARIES}
 	)
 endif()
-
-
-
-target_link_libraries(vulkanengine
-	GPUOpen::VulkanMemoryAllocator
-	imgui
-)
-
 

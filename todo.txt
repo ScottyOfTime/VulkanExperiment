@@ -1,15 +1,10 @@
 <<< TO DO >>>
 
---> Game directory
-	--> Now that the renderer has full potential functionality (already static linked as library)
-		start making the game files as well
-
---> Camera Movement
-	--> Put actually camera functionality and operations out of main loop
-	--> Maybe actually learn about the mathematics of 3D computer graphics
-
---> Basic lighting
+[IN PROGRESS] --> Basic lighting
 	--> frag shader lighting
+
+--> Vertex Buffer Allocation implementation
+	--> One big vertex buffer
 
 --> PBR
 
@@ -31,3 +26,11 @@
 
 --> [LOW PRIO] Purge std::shared_ptr and std::unique_ptr from codebase
 	--> Use normal pointers because we are in the wild west
+
+
+<<< COMPLETED >>>
+
+--> Game directory
+	--> Now that the renderer has full potential functionality (already static linked as library)
+		start making the game files as well
+

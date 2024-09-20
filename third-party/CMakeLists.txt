@@ -1,4 +1,5 @@
 add_subdirectory(SDL)
 add_subdirectory(VulkanMemoryAllocator)
+add_subdirectory(glslang)
 add_subdirectory(imgui)
 add_subdirectory(tinygltf)

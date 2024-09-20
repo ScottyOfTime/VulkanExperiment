@@ -4,7 +4,9 @@
 #define VMA_IMPLEMENTATION
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTION 1
-#include "vk_mem_alloc.h"
+#include <vk_mem_alloc.h>
+
+#include <glslang/Public/ShaderLang.h>
 
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -13,8 +15,18 @@
 	#define load_proc_addr dlsym
 #endif
 
-EngineResult VulkanEngine::init(SDL_Window *win) {
-	window = win;
+EngineResult VulkanEngine::init() {
+	// Create SDL window
+	if (SDL_Init(SDL_INIT_VIDEO) != SDL_TRUE) {
+		ENGINE_ERROR("Could not initialize SDL");
+		fprintf(stderr, "\tSDL Error: %s\n", SDL_GetError());
+		return ENGINE_FAILURE;
+	}
+	window = SDL_CreateWindow("Game", 1280, 720, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+	if (window == NULL) {
+		ENGINE_ERROR("Could not create SDL Window");
+		fprintf(stderr, "\tSDL Error: %s\n", SDL_GetError());
+	}
 
 	ENGINE_RUN_FN(link());
 	ENGINE_RUN_FN(create_instance());
@@ -46,19 +58,31 @@ EngineResult VulkanEngine::init(SDL_Window *win) {
 	ENGINE_RUN_FN(init_commands());
 	ENGINE_RUN_FN(init_sync());
 	ENGINE_RUN_FN(init_descriptors());
+
+	ENGINE_MESSAGE("Initializing GLSL");
+	glslang::InitializeProcess();
+
 	ENGINE_RUN_FN(init_pipelines());
 	ENGINE_RUN_FN(init_imgui());
 	init_default_data();
+
+	shaderMonitorThread = std::thread(&VulkanEngine::shader_monitor_thread, this);
 
 	return ENGINE_SUCCESS;
 }
 
 void VulkanEngine::deinit() {
 	shutdown = 1;
+
 	if (device != NULL) {
 		deviceDispatch.vkDeviceWaitIdle(device);
 		ENGINE_MESSAGE("Waiting for device to idle.");
 	}
+
+	if (shaderMonitorThread.joinable()) {
+		shaderMonitorThread.join();
+	}
+
 	for (auto& mesh : testMeshes) {
 		destroy_buffer(&mesh->meshBuffers.indexBuffer);
 		destroy_buffer(&mesh->meshBuffers.vertexBuffer);
@@ -85,6 +109,24 @@ void VulkanEngine::deinit() {
 		}
 
 		frames[i].deletionQueue.flush();
+	}
+
+	ENGINE_MESSAGE("Finalizing GLSL");
+	
+	glslang::FinalizeProcess();
+
+	// Destroy all the shader modules
+	for (size_t i = 0; i < shaderCount; i++) {
+		deviceDispatch.vkDestroyShaderModule(device, shaders[i].shader,
+			nullptr);
+	}
+
+	// Destroy all pipelines and their pipeline layouts
+	for (size_t i = 0; i < pipelineCount; i++) {
+		deviceDispatch.vkDestroyPipelineLayout(device,
+			pipelines[i].layout, nullptr);
+		deviceDispatch.vkDestroyPipeline(device, pipelines[i].pipeline,
+			nullptr);
 	}
 
 	mainDeletionQueue.flush();
@@ -120,6 +162,7 @@ void VulkanEngine::deinit() {
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 		FreeLibrary(lib);
 #endif
+	SDL_DestroyWindow(window);
 	}
 }
 
@@ -777,21 +820,6 @@ EngineResult VulkanEngine::init_descriptors() {
 			&deviceDispatch);
 	}
 
-	{
-		DescriptorLayoutBuilder builder;
-		builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-		gpuSceneDataDescLayout = builder.build(device,
-			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &deviceDispatch);
-	}
-
-	// build singleImageDescriptorLayout
-	{
-		DescriptorLayoutBuilder builder;
-		builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		singleImageDescriptorLayout = builder.build(device, VK_SHADER_STAGE_FRAGMENT_BIT,
-			&deviceDispatch);
-	}
-
 	// Allocate descriptor set for draw image
 	drawImageDescriptors = descriptorAllocator.alloc(device, drawImageDescriptorLayout,
 		&deviceDispatch);
@@ -819,7 +847,7 @@ EngineResult VulkanEngine::init_descriptors() {
 		frames[i].frameDescriptors = DescriptorAllocatorGrowable{};
 		frames[i].frameDescriptors.init(device, 1000, frame_sizes, &deviceDispatch);
 
-		mainDeletionQueue.push_function("destroy_pools for globalSceneData", [&, i]() {
+		mainDeletionQueue.push_function("destroy_pools for globalSceneData per frame", [&, i]() {
 			frames[i].frameDescriptors.destroy_pools(device, &deviceDispatch);
 		});
 	}
@@ -828,98 +856,17 @@ EngineResult VulkanEngine::init_descriptors() {
 }
 
 EngineResult VulkanEngine::init_pipelines() {
-	if (init_background_pipelines() != ENGINE_SUCCESS) {
-		return ENGINE_FAILURE;
-	}
-	if (init_mesh_pipeline() != ENGINE_SUCCESS) {
-		return ENGINE_FAILURE;
-	}
-	return ENGINE_SUCCESS;
-}
-
-EngineResult VulkanEngine::init_background_pipelines() {
-	VkPipelineLayoutCreateInfo ci = {};
-	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	ci.pNext = NULL;
-	ci.pSetLayouts = &drawImageDescriptorLayout;
-	ci.setLayoutCount = 1;
-
-	VkPushConstantRange pushConst = {};
-	pushConst.offset = 0;
-	pushConst.size = sizeof(ComputePushConstants);
-	pushConst.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	ci.pPushConstantRanges = &pushConst;
-	ci.pushConstantRangeCount = 1;
-
-	if (deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &gradientPipelineLayout) != VK_SUCCESS) {
-		ENGINE_ERROR("Failed to create pipeline layout.");
-		return ENGINE_FAILURE;
-	}
-
-	VkShaderModule gradientShader;
-	if (!load_shader_module("../../shaders/gradient_color.spv", device, &gradientShader,
-		&deviceDispatch)) {
-		ENGINE_ERROR("Failed to build the compute shader.");
-		return ENGINE_FAILURE;
-	}
-
-	VkShaderModule skyShader;
-	if (!load_shader_module("../../shaders/sky.spv", device, &skyShader,
-		&deviceDispatch)) {
-		ENGINE_ERROR("Failed to build the compute shader.");
-		return ENGINE_FAILURE;
-	}
-
-	VkPipelineShaderStageCreateInfo si = {};
-	si.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	si.pNext = NULL;
-	si.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	si.module = gradientShader;
-	si.pName = "main";
-
-	VkComputePipelineCreateInfo computeCi = {};
-	computeCi.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	computeCi.pNext = NULL;
-	computeCi.layout = gradientPipelineLayout;
-	computeCi.stage = si;
-	computeCi.basePipelineHandle = VK_NULL_HANDLE;
-
-	ComputeEffect gradient;
-	gradient.layout = gradientPipelineLayout;
-	gradient.name = "gradient";
-	gradient.data = {};
-	gradient.data.data1 = glm::vec4(1, 0, 0, 1);
-	gradient.data.data2 = glm::vec4(0, 0, 1, 1);
-
-	VK_RUN_FN(deviceDispatch.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeCi, NULL,
-		&gradient.pipeline),
-		"Failed to create compute pipeline");
-
-	computeCi.stage.module = skyShader;
-
-	ComputeEffect sky;
-	sky.layout = gradientPipelineLayout;
-	sky.name = "sky";
-	sky.data = {};
-	sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
-
-	VK_RUN_FN(deviceDispatch.vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeCi, NULL,
-		&sky.pipeline),
-		"Failed to create compute pipeline");
-
-	backgroundEffects.push_back(gradient);
-	backgroundEffects.push_back(sky);
-
-	deviceDispatch.vkDestroyShaderModule(device, gradientShader, NULL);
-	deviceDispatch.vkDestroyShaderModule(device, skyShader, NULL);
-
-	mainDeletionQueue.push_function("destroy background pipelines", [=] {
-		deviceDispatch.vkDestroyPipelineLayout(device, gradientPipelineLayout, NULL);
-		deviceDispatch.vkDestroyPipeline(device, gradient.pipeline, NULL);
-		deviceDispatch.vkDestroyPipeline(device, sky.pipeline, NULL);
+	// create the scene UBO
+	// @Refactor -> Probably not the place for this to be created
+	create_buffer(&sceneUBO, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VMA_MEMORY_USAGE_AUTO);
+	mainDeletionQueue.push_function("destroy scene UBO", [&]() {
+		destroy_buffer(&sceneUBO);
 	});
 
+	if (init_tex_mesh_pipeline() != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
 	return ENGINE_SUCCESS;
 }
 
@@ -988,8 +935,8 @@ EngineResult VulkanEngine::init_imgui() {
 	ImGui_ImplVulkan_CreateFontsTexture();
 
 	mainDeletionQueue.push_function("ImGui shutdown", [=]() {
-		//deviceDispatch.vkDestroyDescriptorPool(device, imguiPool, NULL);
 		ImGui_ImplVulkan_Shutdown();
+		deviceDispatch.vkDestroyDescriptorPool(device, imguiPool, NULL);
 	});
 
 	return ENGINE_SUCCESS;
@@ -1002,6 +949,12 @@ EngineResult VulkanEngine::draw() {
 	}
 	get_current_frame().deletionQueue.flush();
 	get_current_frame().frameDescriptors.clear_pools(device, &deviceDispatch);
+
+	for (size_t i = 0; i < shaderCount; i++) {
+		if (shaders[i].recompile.load()) {
+			recompile_shader(i);
+		}
+	}
 
 	drawExtent.width = std::min(drawImage.imageExtent.width, swapchainExtent.width) * renderScale;
 	drawExtent.height = std::min(drawImage.imageExtent.height, swapchainExtent.height) * renderScale;
@@ -1025,7 +978,15 @@ EngineResult VulkanEngine::draw() {
 		return ENGINE_FAILURE;
 	}
 
-//> Draw first
+
+	// Update sceneUBO	
+	// 1. Write to sceneData struct
+	// 2. Copy sceneData struct into sceneUBO buffer
+	GPUSceneData* sceneUniformData = (GPUSceneData*)sceneUBO.allocation->GetMappedData();
+	*sceneUniformData = sceneData;
+
+
+	//>> Draw first
 
 	VkCommandBufferBeginInfo cmdBi = {};
 	cmdBi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1037,13 +998,7 @@ EngineResult VulkanEngine::draw() {
 		return ENGINE_FAILURE;
 	}
 
-	// Transition main draw image into general layout so we can write into it
-	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-		&deviceDispatch);
-
-	draw_background(cmd);
-
-	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &deviceDispatch);
+	transition_image(cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &deviceDispatch);
 
 	transition_image(cmd, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, &deviceDispatch);
 
@@ -1054,8 +1009,8 @@ EngineResult VulkanEngine::draw() {
 		&deviceDispatch);
 	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		&deviceDispatch);
-//< Draw first
-//> Draw imgui
+	//
+	//>> Draw imgui
 	copy_image_to_image(cmd, drawImage.image, swapchainImgs[swapchainImgIndex], drawExtent, swapchainExtent,
 		&deviceDispatch);
 
@@ -1128,30 +1083,6 @@ EngineResult VulkanEngine::draw() {
 
 	frameNumber++;
 	return ENGINE_SUCCESS;
-}
-
-void VulkanEngine::draw_background(VkCommandBuffer cmd) {
-	VkClearColorValue clearValue;
-	float flash = abs(sin(frameNumber / 120.f));
-	clearValue = { {0.0f, 0.0f, flash, 1.0f} };
-
-	VkImageSubresourceRange clearRange = {};
-	clearRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	clearRange.baseMipLevel = 0;
-	clearRange.levelCount = VK_REMAINING_MIP_LEVELS;
-	clearRange.baseArrayLayer = 0;
-	clearRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-
-	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect];
-
-	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
-	deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout,
-		0, 1, &drawImageDescriptors, 0, NULL);
-
-	deviceDispatch.vkCmdPushConstants(cmd, gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-		sizeof(ComputePushConstants), &effect.data);
-
-	deviceDispatch.vkCmdDispatch(cmd, std::ceil(drawExtent.width / 16.0), std::ceil(drawExtent.height / 16.0), 1);
 }
 
 
@@ -1241,7 +1172,7 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	colorAttachment.imageView = drawImage.imageView;
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
 	VkRenderingAttachmentInfo depthAttachment = {};
@@ -1268,21 +1199,28 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	deviceDispatch.vkCmdBeginRendering(cmd, &renderInfo);
 
-//> draw the mesh
-	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
-	// bind a texture
-	VkDescriptorSet imageSet = get_current_frame().frameDescriptors.alloc(device,
-		singleImageDescriptorLayout, &deviceDispatch);
+	// Bind texMeshPipeline
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+		pipelines[texMeshPipeline].pipeline);
+
+	// Bind a set in texDescLayout layout:
+	// 		0: UNIFORM_BUFFER
+	// 		1: COMBINED_IMAGE_SAMPLER
+	VkDescriptorSet texSet = get_current_frame().frameDescriptors.alloc(device,
+		texDescLayout, &deviceDispatch);
 	{
 		DescriptorWriter writer;
-		writer.write_image(0, errorCheckerboardImage.imageView, defaultSamplerNearest,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.write_buffer(0, sceneUBO.buffer, sizeof(GPUSceneData), 0,
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		writer.write_image(1, errorCheckerboardImage.imageView, defaultSamplerNearest,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-		writer.update_set(device, imageSet, &deviceDispatch);
+		writer.update_set(device, texSet, &deviceDispatch);
 	}
 
-	deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout,
-		0, 1, &imageSet, 0, nullptr);
+	deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		texMeshPipelineLayout, 0, 1, &texSet, 0, nullptr);
 
 	VkViewport viewport = {};
 	viewport.x = 0;
@@ -1316,35 +1254,10 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
 
-	deviceDispatch.vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
+	deviceDispatch.vkCmdPushConstants(cmd, texMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
 		&pushConstants);
 	deviceDispatch.vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
 	deviceDispatch.vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
-//< draw the mesh
-
-	// allocate a new uniform buffer for the scene data
-	AllocatedBuffer gpuSceneDataBuffer;
-	create_buffer(&gpuSceneDataBuffer, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-	// add it to the deletion queue of this frame so it gets deleted once its been used
-	get_current_frame().deletionQueue.push_function("destroy_buffer for gpuSceneDataBuffer", [=, this]() {
-		destroy_buffer(&gpuSceneDataBuffer);
-	});
-
-	// write the buffer
-	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData();
-	*sceneUniformData = sceneData;
-
-	// create a descriptor set that binds the buffer and update it
-	VkDescriptorSet globalDescriptor = get_current_frame().frameDescriptors.alloc(device,
-		gpuSceneDataDescLayout, &deviceDispatch);
-
-	DescriptorWriter writer;
-	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-	writer.update_set(device, globalDescriptor, &deviceDispatch);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 
@@ -1425,58 +1338,223 @@ GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<
 	return newSurface;
 }
 
-EngineResult VulkanEngine::init_mesh_pipeline() {
-	VkShaderModule triangleFragShader;
-	if (!load_shader_module("../../shaders/tex_image.frag.spv", device, &triangleFragShader, &deviceDispatch)) {
-		ENGINE_ERROR("Failed to load colored_triangle.frag.spv shader module.");
+void VulkanEngine::shader_monitor_thread() {
+	while (!shutdown) {
+		shaderMutex.lock();
+		for (size_t i = 0; i < shaderCount; i++) {
+			if (std::filesystem::exists(shaders[i].path)) {
+				if (std::filesystem::last_write_time(shaders[i].path)
+					!= shaders[i].lastWrite) {
+					printf("Recompile needed\n");
+					shaders[i].recompile.store(1);
+				}
+			}
+		}
+		shaderMutex.unlock();
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	}
+}
+
+EngineResult VulkanEngine::create_shader(const char* path,
+	EShLanguage stage, uint32_t* idx) {
+	shaderMutex.lock();
+	if (shaderCount >= MAX_SHADERS) {
+		ENGINE_ERROR("Maximum shaders reached.");
+		shaderMutex.unlock();
 		return ENGINE_FAILURE;
 	}
 
-	VkShaderModule triangleVertexShader;
-	if (!load_shader_module("../../shaders/colored_triangle_mesh.vert.spv", device, &triangleVertexShader, &deviceDispatch)) {
-		ENGINE_ERROR("Failed to load colored_triangle.vert.spv shader module.");
+	if (load_shader_module(path, device, &shaders[shaderCount].shader,
+		stage, &deviceDispatch) > 0) {
+		shaderMutex.unlock();
+		return ENGINE_FAILURE;
+	}
+	shaders[shaderCount].stage = stage;
+	shaders[shaderCount].lastWrite = std::filesystem::last_write_time(path);
+	shaders[shaderCount].path = path;
+
+	*idx = shaderCount;
+
+	shaderCount++;
+	shaderMutex.unlock();
+
+	return ENGINE_SUCCESS;
+}
+
+void VulkanEngine::recompile_shader(uint32_t idx) {
+	shaderMutex.lock();
+	if (idx > shaderCount) {
+		ENGINE_ERROR("Shader index out of range.");
+		shaders[idx].lastWrite = std::filesystem::last_write_time(shaders[idx].path);
+		shaders[idx].recompile.store(0);
+		shaderMutex.unlock();
+		return;
+	}
+
+	deviceDispatch.vkDeviceWaitIdle(device);
+
+	// Recompile and recreate shader module
+	VkShaderModule oldModule = shaders[idx].shader;
+
+	if (load_shader_module(shaders[idx].path, device,
+		&shaders[idx].shader, shaders[idx].stage, &deviceDispatch)
+		> 0) {
+		ENGINE_WARNING("Could not recompile shader.");
+		shaders[idx].lastWrite = std::filesystem::last_write_time(shaders[idx].path);
+		shaders[idx].recompile.store(0);
+		shaderMutex.unlock();
+		return;
+	}
+
+	deviceDispatch.vkDestroyShaderModule(device, oldModule, nullptr);
+
+	// Recreate all pipelines that used this shader
+	for (size_t i = 0; i < pipelineCount; i++) {
+		if (pipelines[i].vtxShaderIdx == idx) {
+			VkPipeline oldPipeline = pipelines[i].pipeline;
+			pipelines[i].builder.set_vtx_shader(shaders[idx].shader);
+			pipelines[i].builder.set_color_attachment_format(drawImage.imageFormat);
+			pipelines[i].builder.set_depth_format(depthImage.imageFormat);
+			pipelines[i].pipeline = pipelines[i].builder.build_pipeline(
+				device, &deviceDispatch);
+			deviceDispatch.vkDestroyPipeline(device, oldPipeline, nullptr);
+		}
+		else if (pipelines[i].fragShaderIdx == idx) {
+			VkPipeline oldPipeline = pipelines[i].pipeline;
+			pipelines[i].builder.set_frag_shader(shaders[idx].shader);
+			pipelines[i].builder.set_color_attachment_format(drawImage.imageFormat);
+			pipelines[i].builder.set_depth_format(depthImage.imageFormat);
+			pipelines[i].pipeline = pipelines[i].builder.build_pipeline(
+				device, &deviceDispatch);
+			deviceDispatch.vkDestroyPipeline(device, oldPipeline, nullptr);
+		}
+	}
+
+	shaders[idx].lastWrite = std::filesystem::last_write_time(shaders[idx].path);
+	shaderMutex.unlock();
+	shaders[idx].recompile.store(0);
+}
+
+void VulkanEngine::destroy_shader(uint32_t idx) {
+	shaderMutex.lock();
+	deviceDispatch.vkDestroyShaderModule(device, shaders[idx].shader,
+		nullptr);
+
+	for (size_t i = idx; i < shaderCount; i++) {
+		shaders[i].path = shaders[i + 1].path;
+		shaders[i].lastWrite = shaders[i + 1].lastWrite;
+		shaders[i].shader = shaders[i + 1].shader;
+		shaders[i].stage = shaders[i + 1].stage;
+		shaders[i].recompile.store(shaders[i + 1].recompile.load());
+	}
+
+	shaderCount--;
+	shaderMutex.unlock();
+}
+
+EngineResult VulkanEngine::create_pipeline(PipelineBuilder* builder,
+	uint32_t vtxShaderIdx, uint32_t fragShaderIdx, uint32_t* idx) {
+
+	if (pipelineCount >= MAX_PIPELINES) {
+		ENGINE_ERROR("Maximum pipelines reached");
 		return ENGINE_FAILURE;
 	}
 
+	builder->set_vtx_shader(shaders[vtxShaderIdx].shader);
+	builder->set_frag_shader(shaders[fragShaderIdx].shader);
+
+	pipelines[pipelineCount].pipeline = 
+		builder->build_pipeline(device, &deviceDispatch);
+
+	pipelines[pipelineCount].layout = builder->pipelineLayout;
+
+	pipelines[pipelineCount].vtxShaderIdx = vtxShaderIdx;
+	pipelines[pipelineCount].fragShaderIdx = fragShaderIdx;
+	memcpy(&pipelines[pipelineCount].builder, builder, sizeof(PipelineBuilder));
+
+	*idx = pipelineCount;
+
+	pipelineCount++;
+
+	return ENGINE_SUCCESS;
+}
+
+void VulkanEngine::destroy_pipeline(uint32_t idx) {
+	deviceDispatch.vkDestroyPipelineLayout(device,
+		pipelines[pipelineCount].layout, nullptr);
+	deviceDispatch.vkDestroyPipeline(device,
+		pipelines[pipelineCount].pipeline, nullptr);
+
+	for (size_t i = 0; i < pipelineCount; i++) {
+		pipelines[i] = pipelines[i + 1];
+	}
+
+	pipelineCount--;
+}
+
+EngineResult VulkanEngine::init_tex_mesh_pipeline() {
+
+	// Create descriptor set layout that will be used for pipeline layout
+	// Layout is:
+	// 		0: UNIFORM_BUFFER
+	// 		1: COMBINED_IMAGE_SAMPLER
+	// @Refactor -> Currently there is an int_descriptors() function that handles
+	// 				the creation and initial allocation of desriptor sets/layouts
+	// 				... it may be worth placing this there
+	{
+		DescriptorLayoutBuilder b;
+		b.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		b.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		texDescLayout = b.build(device, VK_SHADER_STAGE_FRAGMENT_BIT, &deviceDispatch);
+	}
+
+	mainDeletionQueue.push_function("destroying layout", [&]() {
+		deviceDispatch.vkDestroyDescriptorSetLayout(device,
+			texDescLayout, nullptr);
+	});
+
+	// Declare push constant buffer range
 	VkPushConstantRange bufferRange{};
 	bufferRange.offset = 0;
 	bufferRange.size = sizeof(GPUDrawPushConstants);
 	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	VkPipelineLayoutCreateInfo ci = {};
-	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	ci.pNext = NULL;
-	ci.pPushConstantRanges = &bufferRange;
-	ci.pushConstantRangeCount = 1;
-	ci.pSetLayouts = &singleImageDescriptorLayout;
-	ci.setLayoutCount = 1;
+	// Create pipeline layout
+	VkPipelineLayoutCreateInfo layoutCi = { .sType = 
+		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	layoutCi.pNext = nullptr;
+	layoutCi.pPushConstantRanges = &bufferRange;
+	layoutCi.pushConstantRangeCount = 1;
+	layoutCi.pSetLayouts = &texDescLayout;
+	layoutCi.setLayoutCount = 1;
 
-	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &ci, NULL, &meshPipelineLayout),
-		"Failed to create mesh pipeline layout.");
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &layoutCi, nullptr,
+				&texMeshPipelineLayout));
 
-	PipelineBuilder pipelineBuilder;
+	uint32_t vtxShader, fragShader;
+	if (create_shader("../../shaders/colored_triangle_mesh.vert",
+		EShLangVertex, &vtxShader) != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+	if (create_shader("../../shaders/tex_image.frag",
+		EShLangFragment, &fragShader) != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
 
-	pipelineBuilder.pipelineLayout = meshPipelineLayout;
-	pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
-	pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	pipelineBuilder.set_multisampling_none();
-	pipelineBuilder.disable_blending();
-	pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_LESS);
+	PipelineBuilder builder;
 
-	pipelineBuilder.set_color_attachment_format(drawImage.imageFormat);
-	pipelineBuilder.set_depth_format(depthImage.imageFormat);
+	builder.pipelineLayout = texMeshPipelineLayout;
+	builder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	builder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	builder.set_multisampling_none();
+	builder.disable_blending();
+	builder.enable_depthtest(true, VK_COMPARE_OP_LESS);
 
-	meshPipeline = pipelineBuilder.build_pipeline(device, &deviceDispatch);
+	builder.set_color_attachment_format(drawImage.imageFormat);
+	builder.set_depth_format(depthImage.imageFormat);
 
-	deviceDispatch.vkDestroyShaderModule(device, triangleFragShader, NULL);
-	deviceDispatch.vkDestroyShaderModule(device, triangleVertexShader, NULL);
-
-	mainDeletionQueue.push_function("destroy mesh pipeline", [&]() {
-		deviceDispatch.vkDestroyPipelineLayout(device, meshPipelineLayout, NULL);
-		deviceDispatch.vkDestroyPipeline(device, meshPipeline, NULL);
-		});
+	create_pipeline(&builder, vtxShader, fragShader, &texMeshPipeline);
 
 	return ENGINE_SUCCESS;
 }

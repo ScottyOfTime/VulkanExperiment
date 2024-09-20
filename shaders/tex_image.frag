@@ -1,15 +1,23 @@
 #version 450
 
-// shader input
 layout (location = 0) in vec3 inColor;
 layout (location = 1) in vec2 inUV;
-// output write
+layout (location = 2) in vec3 inNormal;
+layout (location = 3) in vec3 fragPos;
+
 layout (location = 0) out vec4 outFragColor;
 
-// texture to access
-layout(set = 0, binding = 0) uniform sampler2D displayTexture;
+// descriptor set 0
+layout(set = 0, binding = 0) uniform sceneData {
+	vec4 ambience;
+} ubo;
+layout(set = 0, binding = 1) uniform sampler2D displayTexture;
 
 void main()
 {
-	outFragColor = texture(displayTexture, inUV);
+	vec3 objColor = vec3(0.1, 0.3, 0.1);
+	vec3 ambient = ubo.ambience.rgb * ubo.ambience.a;
+
+	vec3 result = ambient * objColor;
+	outFragColor = vec4(result, 1.0);
 }
