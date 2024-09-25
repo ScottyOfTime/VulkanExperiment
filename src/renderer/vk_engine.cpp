@@ -64,6 +64,22 @@ EngineResult VulkanEngine::init() {
 
 	ENGINE_RUN_FN(init_pipelines());
 	ENGINE_RUN_FN(init_imgui());
+
+	uint32_t res = gBuf.create_buffer(device, allocator, GLOBAL_BUFFER_SIZE,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, &deviceDispatch);
+	if (res > 0) {
+		return ENGINE_FAILURE;
+	}
+
+	mainDeletionQueue.push_function("destroy gBuf", [&]() {
+		gBuf.destroy_buffer(allocator);
+	});
+
 	init_default_data();
 
 	shaderMonitorThread = std::thread(&VulkanEngine::shader_monitor_thread, this);
@@ -83,10 +99,10 @@ void VulkanEngine::deinit() {
 		shaderMonitorThread.join();
 	}
 
-	for (auto& mesh : testMeshes) {
+	/*for (auto& mesh : testMeshes) {
 		destroy_buffer(&mesh->meshBuffers.indexBuffer);
 		destroy_buffer(&mesh->meshBuffers.vertexBuffer);
-	}
+	}*/
 
 	ENGINE_MESSAGE("Flushing main deletor queue.")
 
@@ -1250,14 +1266,14 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	);
 	proj[1][1] *= -1;
 
-	pushConstants.worldMatrix = proj * view; //glm::mat4{ 1.0f };
+	pushConstants.worldMatrix = proj * view;
 
-	pushConstants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+	pushConstants.vertexBuffer = testMeshes[0]->meshBuffers.vertexBufferAddress;
 
 	deviceDispatch.vkCmdPushConstants(cmd, texMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
 		&pushConstants);
-	deviceDispatch.vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-	deviceDispatch.vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
+	deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, testMeshes[0]->meshBuffers.indexOffset, VK_INDEX_TYPE_UINT32);
+	deviceDispatch.vkCmdDrawIndexed(cmd, testMeshes[0]->surfaces[0].count, 1, 0, 0, 0);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 
@@ -1288,23 +1304,26 @@ void VulkanEngine::destroy_buffer(const AllocatedBuffer* buffer) {
 	++buffersDestroyed;
 }
 
-GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
+GPUMeshBuffer VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices,
+		GeoSurface* surfaces, uint32_t surfaceCount, const char* meshName) {
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
-	GPUMeshBuffers newSurface;
+	GPUMeshBuffers newSurface = {};
 
-	// create vertex buffer
-	create_buffer(&newSurface.vertexBuffer, vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+	VkDeviceSize vtxBufOffset;
+	uint32_t vtxCount;
 
-	// find the address of the vertex buffer
-	VkBufferDeviceAddressInfo deviceAddrInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = newSurface.vertexBuffer.buffer };
-	newSurface.vertexBufferAddress = deviceDispatch.vkGetBufferDeviceAddress(device, &deviceAddrInfo);
+	VkDeviceSize idxBufOffset;
+	uint32_t idxCount;
 
-	// create index buffer
-	create_buffer(&newSurface.indexBuffer, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		VMA_MEMORY_USAGE_GPU_ONLY);
+	vtxBufOffset = gBuf.suballocate(sizeof(Vertex) * vertices.size(), 8);
+	vtxCount = vertices.size();
+	printf("vtxBufOffset: %d\n", vtxBufOffset);
+
+	idxBufOffset = gBuf.suballocate(sizeof(uint32_t) * indices.size(), 8);
+	idxCount = indices.size();
+	printf("idxBufOffset: %d\n", idxBufOffset);
 
 	AllocatedBuffer staging; 
 	create_buffer(&staging, vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1319,21 +1338,24 @@ GPUMeshBuffers VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<
 
 	immediate_submit([&](VkCommandBuffer cmd) {
 		VkBufferCopy vertexCopy{ 0 };
-		vertexCopy.dstOffset = 0;
+		vertexCopy.dstOffset = vtxBufOffset;
 		vertexCopy.srcOffset = 0;
 		vertexCopy.size = vertexBufferSize;
 
-		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, gBuf.buffer, 1, &vertexCopy);
 
 		VkBufferCopy indexCopy{ 0 };
-		indexCopy.dstOffset = 0;
+		indexCopy.dstOffset = idxBufOffset;
 		indexCopy.srcOffset = vertexBufferSize;
 		indexCopy.size = indexBufferSize;
 
-		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, gBuf.buffer, 1, &indexCopy);
 	});
 
 	destroy_buffer(&staging);
+
+	newSurface.vertexBufferAddress = gBuf.addr + vtxBufOffset;
+	newSurface.indexOffset = idxBufOffset;
 
 	return newSurface;
 }
@@ -1409,6 +1431,10 @@ void VulkanEngine::recompile_shader(uint32_t idx) {
 	deviceDispatch.vkDestroyShaderModule(device, oldModule, nullptr);
 
 	// Recreate all pipelines that used this shader
+	// There is a memory bug here as the pipeline builder's color attachment
+	// and depth format are stack allocated pointers in the scope of the builder
+	// meaning after the build_pipeline() function is called, these values
+	// are not stored in the builder -> builder probably needs some refactoring
 	for (size_t i = 0; i < pipelineCount; i++) {
 		if (pipelines[i].vtxShaderIdx == idx) {
 			VkPipeline oldPipeline = pipelines[i].pipeline;

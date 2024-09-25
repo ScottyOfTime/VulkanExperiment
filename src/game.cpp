@@ -9,6 +9,12 @@ void Game::run() {
 		return;
 	}
 
+	entity_t testEntity = entityManager.create_entity();
+	entityManager.add_component(testEntity, POSITION);
+	entityManager.add_component(testEntity, VELOCITY);
+	entityManager.positions[testEntity] = glm::vec3{ 0, 0, 0 };
+	entityManager.velocities[testEntity] = glm::vec3{ 1, 1, 1 };
+
 	SDL_Event e;
 	while (!quit) {
 		switch (mode) {
@@ -33,6 +39,8 @@ void Game::run() {
 
 			ImGui_ImplSDL3_ProcessEvent(&e);
 		}
+
+		system_movement(&entityManager);
 
 		//> Camera stuff should really belong elsewhere but probably
 		//> exit elsewhere but also not within renderer except for
@@ -79,16 +87,6 @@ void Game::run() {
 			ImGui::SliderFloat("Render Scale", &vk->renderScale, 0.3f, 1.f);
 			ImGui::Text("Mode: %s", mode ? "EDIT" : "PLAY");
 
-			/*ComputeEffect& selected = vk->backgroundEffects[vk->currentBackgroundEffect];
-
-			ImGui::Text("Selected effect: ", selected.name);
-
-			ImGui::SliderInt("Effect Index", &vk->currentBackgroundEffect, 0, vk->backgroundEffects.size() - 1);
-
-			ImGui::InputFloat4("data1", (float*)&selected.data.data1);
-			ImGui::InputFloat4("data2", (float*)&selected.data.data2);
-			ImGui::InputFloat4("data3", (float*)&selected.data.data3);
-			ImGui::InputFloat4("data4", (float*)&selected.data.data4);*/
 			ImGui::InputFloat3("Ambient Color + Strength", (float*)&vk->sceneData.ambience);
 			ImGui::SliderFloat("Ambient Strength", &vk->sceneData.ambience.a, 0, 1);
 		}

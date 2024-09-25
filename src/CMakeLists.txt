@@ -1,7 +1,7 @@
 # Build the renderer library first, obviously
 add_subdirectory(renderer) # Builds the vulkanengine library
 
-add_executable(vulkan main.cpp game.cpp)
+add_executable(vulkan main.cpp game.cpp "entity_manager.h" "entity_manager.cpp")
 
 if (WIN32)
 	target_include_directories(vulkan PRIVATE

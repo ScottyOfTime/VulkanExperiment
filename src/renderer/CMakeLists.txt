@@ -9,6 +9,7 @@ set(VULKAN_ENGINE_SRC_FILES
 	vk_descriptors.cpp
 	vk_pipelines.cpp
 	vk_loader.cpp
+	vk_suballocator.cpp
 )
 
 link_directories(C:/VulkanSDK/${VULKAN_SDK_VERSION}/Lib/)

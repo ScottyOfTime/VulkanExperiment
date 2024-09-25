@@ -16,6 +16,7 @@
 #include <functional>
 #include <thread>
 #include <mutex>
+#include <unordered_map>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -36,20 +37,24 @@
 #include "vk_descriptors.h"
 #include "vk_pipelines.h"
 #include "vk_loader.h"
+#include "vk_suballocator.h"
 #include "camera.h"
 
 /*---------------------------
  | MACROS
  ---------------------------*/
 
-#define EngineResult 	uint32_t
-#define ENGINE_SUCCESS	0
-#define ENGINE_FAILURE	1
+#define EngineResult 		uint32_t
+#define ENGINE_SUCCESS		0
+#define ENGINE_FAILURE		1
 
-#define TIMEOUT_N		1000000000
+#define TIMEOUT_N			1000000000
 
-#define MAX_SHADERS		64
-#define MAX_PIPELINES	32
+#define MAX_SHADERS			64
+#define MAX_PIPELINES		32
+#define MAX_MESHES			128
+
+#define GLOBAL_BUFFER_SIZE	128 * 1024 * 1024
 
 #define ENGINE_MESSAGE(MSG) \
 	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n");
@@ -276,7 +281,7 @@ private:
 	void					shader_monitor_thread();
 
 	/*---------------------------
-	 |  RESOUCE ARRAYS
+	 |  RESOUCE ARRAYS AND BUFFERS
 	 ---------------------------*/
 	Shader					shaders[MAX_SHADERS];
 	uint32_t				shaderCount = 0;
@@ -294,6 +299,16 @@ private:
 								uint32_t fragShaderIdx, 
 								uint32_t* idx);
 	void					destroy_pipeline(uint32_t idx);
+	
+	// Renderer owns all meshes loaded/uploaded and are accessed
+	// through index
+	MeshAsset				meshes[MAX_MESHES];
+	uint32_t				meshCount = 0;
+
+	VkBufferSuballocator	gBuf;
+
+	std::vector<VkDeviceSize> meshOffsets;
+
 
 	/*---------------------------
 	 |  PIPELINES AND LAYOUTS 

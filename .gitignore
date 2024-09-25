@@ -41,3 +41,6 @@ CMakeSettings.json
 
 # Compiled shader SPVs
 *.spv
+
+# Swap files
+*.swp

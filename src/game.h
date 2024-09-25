@@ -2,6 +2,7 @@
 #define _GAME_H
 
 #include "renderer/vk_engine.h"
+#include "entity_manager.h"
 
 enum Mode {
 	PLAY,
@@ -13,6 +14,7 @@ struct Game {
 	uint8_t quit = 0;
 
 	VulkanEngine* vk;
+	EntityManager entityManager;
 
 	void run();
 	void cleanup();
