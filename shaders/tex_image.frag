@@ -15,9 +15,9 @@ layout(set = 0, binding = 1) uniform sampler2D displayTexture;
 
 void main()
 {
-	vec3 objColor = vec3(0.1, 0.3, 0.1);
+	vec4 objColor = texture(displayTexture, inUV);
 	vec3 ambient = ubo.ambience.rgb * ubo.ambience.a;
 
-	vec3 result = ambient * objColor;
+	vec3 result = ambient * objColor.rgb;
 	outFragColor = vec4(result, 1.0);
 }

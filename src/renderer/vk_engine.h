@@ -24,12 +24,6 @@
 #include <imgui.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_vulkan.h>
-#include <glm/glm.hpp>
-#include <glm/vec4.hpp>
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include "glm/gtx/transform.hpp"
-#include "glm/gtx/quaternion.hpp"
 
 #include "../os.h"
 #include "vk_dispatch.h"
@@ -179,7 +173,7 @@ public:
 
 	EngineResult 			immediate_submit(std::function<void(VkCommandBuffer)>&& fn);
 
-	GPUMeshBuffers 			upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+	
 
 	Camera 					camera = { 
 								.pos = glm::vec3{ 0, 0, -3 },
@@ -190,6 +184,15 @@ public:
 
 	// dummy push constant for ambient light color and strength
 	GPUSceneData sceneData;
+
+	/*---------------------------
+	 |  INTERFACE
+	 ---------------------------*/
+	void		 			upload_mesh(std::span<uint32_t> indices,
+								std::span<Vertex> vertices, GeoSurface* surfaces,
+								uint32_t surfaceCount, const char* meshName);
+	void					draw_mesh(uint32_t id, const Transform* transform);
+	void					reset_instances();
 
 private:
 	VmaAllocator 			allocator;
@@ -299,13 +302,23 @@ private:
 								uint32_t fragShaderIdx, 
 								uint32_t* idx);
 	void					destroy_pipeline(uint32_t idx);
+
+	// Geometry buffer (device local, must copy data into GPU)
+	VkBufferSuballocator	gBuf;
+	// Object buffer (per instance data, mapped and can write into from CPU)
+	VkBufferSuballocator	oBuf;
 	
 	// Renderer owns all meshes loaded/uploaded and are accessed
 	// through index
-	MeshAsset				meshes[MAX_MESHES];
+	MeshAsset				meshes[MAX_MESHES] = {};
+	// For instanced rendering: index in this array corresponds to
+	// mesh of same index in meshes array, however, the data
+	// at the index in this array corresponds to how many entities
+	// have that mesh. This is useful for instanced rendering.
+	uint32_t				meshInstances[MAX_MESHES] = {};
+	VkDeviceMemory			meshInstanceBufferOffsets[MAX_MESHES] = {};
+	std::unordered_map<const char*, uint32_t> meshNames;
 	uint32_t				meshCount = 0;
-
-	VkBufferSuballocator	gBuf;
 
 	std::vector<VkDeviceSize> meshOffsets;
 

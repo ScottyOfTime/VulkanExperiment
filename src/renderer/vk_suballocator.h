@@ -12,6 +12,7 @@ class VkBufferSuballocator {
 public:
 	uint32_t 			create_buffer(VkDevice device, VmaAllocator allocator,
 							VkDeviceSize allocSize, VkBufferUsageFlags usage,
+							VmaAllocationCreateFlags vmaFlags,
 							DeviceDispatch* deviceDispatch);
 	size_t 				suballocate(VkDeviceSize allocSize, VkDeviceSize alignment);
 
@@ -19,10 +20,9 @@ public:
 
 	VkBuffer 			buffer = VK_NULL_HANDLE;
 	VkDeviceAddress		addr;
-private:
 	VmaAllocation 		allocation;
 	VmaAllocationInfo 	info;
-
+private:
 	VkDeviceSize 		size;
 	VkDeviceSize		offset;
 };

@@ -9,6 +9,7 @@
 // forward declaration
 class VulkanEngine;
 
-std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, const char* filename);
+// Loads the meshes and sends the data to be owned by the vulkan engine
+void loadGltfMeshes(VulkanEngine* engine, const char* filename);
 
 #endif /* VK_LOADER_H */

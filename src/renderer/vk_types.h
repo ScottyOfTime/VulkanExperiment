@@ -4,7 +4,11 @@
 #include "vulkan/vulkan.h"
 #include "vk_mem_alloc.h"
 #include "vk_dispatch.h"
-#include "glm/glm.hpp"
+
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 struct AllocatedImage {
 	VkImage image;
@@ -33,25 +37,28 @@ struct Vertex {
 	glm::vec4 color;
 };
 
-struct GPUMeshBuffers {
-	VkDeviceSize	indexOffset;
-	VkDeviceAddress vertexBufferAddress;
-};
-
 struct GeoSurface {
 	uint32_t startIndex;
 	uint32_t count;
 };
 
 struct MeshAsset {
-	std::string name;
+	std::string 			name;
 	std::vector<GeoSurface> surfaces;
-	GPUMeshBuffers meshBuffers;
+	VkDeviceSize			indexOffset;		
+	VkDeviceSize			vertexOffset;
 };
 
 struct GPUDrawPushConstants {
 	glm::mat4 worldMatrix;
 	VkDeviceAddress vertexBuffer;
+	VkDeviceAddress objectBuffer;
+};
+
+struct Transform {
+	glm::vec3 position;
+	glm::quat rotation;
+	glm::vec3 scale;
 };
 
 #endif /* VK_TYPES_H */

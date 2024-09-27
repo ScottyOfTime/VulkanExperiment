@@ -7,6 +7,7 @@
 #include <vk_mem_alloc.h>
 
 #include <glslang/Public/ShaderLang.h>
+#include <stb_image.h>
 
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -69,15 +70,25 @@ EngineResult VulkanEngine::init() {
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
-			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, &deviceDispatch);
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+			0,
+			&deviceDispatch);
+	if (res > 0) {
+		return ENGINE_FAILURE;
+	}
+	res = oBuf.create_buffer(device, allocator, GLOBAL_BUFFER_SIZE,
+		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VMA_ALLOCATION_CREATE_MAPPED_BIT |
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		&deviceDispatch);
 	if (res > 0) {
 		return ENGINE_FAILURE;
 	}
 
 	mainDeletionQueue.push_function("destroy gBuf", [&]() {
 		gBuf.destroy_buffer(allocator);
+		oBuf.destroy_buffer(allocator);
 	});
 
 	init_default_data();
@@ -1268,12 +1279,19 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
 	pushConstants.worldMatrix = proj * view;
 
-	pushConstants.vertexBuffer = testMeshes[0]->meshBuffers.vertexBufferAddress;
 
-	deviceDispatch.vkCmdPushConstants(cmd, texMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
-		&pushConstants);
-	deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, testMeshes[0]->meshBuffers.indexOffset, VK_INDEX_TYPE_UINT32);
-	deviceDispatch.vkCmdDrawIndexed(cmd, testMeshes[0]->surfaces[0].count, 1, 0, 0, 0);
+	for (size_t i = 0; i < meshCount; i++) {
+		if (meshInstances[i] > 0) {
+			pushConstants.vertexBuffer = gBuf.addr + meshes[i].vertexOffset;
+			pushConstants.objectBuffer = oBuf.addr;
+
+			deviceDispatch.vkCmdPushConstants(cmd, texMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
+				&pushConstants);
+			deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, meshes[i].indexOffset, VK_INDEX_TYPE_UINT32);
+			deviceDispatch.vkCmdDrawIndexed(cmd, meshes[i].surfaces[0].count, meshInstances[i],
+				meshes[i].surfaces[0].startIndex, 0, 0);
+		}
+	}
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 
@@ -1304,32 +1322,28 @@ void VulkanEngine::destroy_buffer(const AllocatedBuffer* buffer) {
 	++buffersDestroyed;
 }
 
-GPUMeshBuffer VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices,
+void VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices,
 		GeoSurface* surfaces, uint32_t surfaceCount, const char* meshName) {
+
+	MeshAsset newMesh = {};
+	newMesh.name = meshName;
+
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
-	GPUMeshBuffers newSurface = {};
+	for (size_t i = 0; i < surfaceCount; i++) {
+		newMesh.surfaces.push_back(surfaces[i]);
+	}
 
-	VkDeviceSize vtxBufOffset;
-	uint32_t vtxCount;
-
-	VkDeviceSize idxBufOffset;
-	uint32_t idxCount;
-
-	vtxBufOffset = gBuf.suballocate(sizeof(Vertex) * vertices.size(), 8);
-	vtxCount = vertices.size();
-	printf("vtxBufOffset: %d\n", vtxBufOffset);
-
-	idxBufOffset = gBuf.suballocate(sizeof(uint32_t) * indices.size(), 8);
-	idxCount = indices.size();
-	printf("idxBufOffset: %d\n", idxBufOffset);
+	newMesh.vertexOffset = gBuf.suballocate(vertexBufferSize, 8);
+	printf("vtxBufOffset: %d\n", newMesh.vertexOffset);
+	newMesh.indexOffset = gBuf.suballocate(indexBufferSize, 8);
+	printf("idxBufOffset: %d\n", newMesh.indexOffset);
 
 	AllocatedBuffer staging; 
 	create_buffer(&staging, vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VMA_MEMORY_USAGE_AUTO);
-
-	void* data = staging.info.pMappedData;//staging.allocation->GetMappedData();
+	void* data = staging.info.pMappedData;
 
 	// copy vertex buffer
 	memcpy(data, vertices.data(), vertexBufferSize);
@@ -1338,14 +1352,14 @@ GPUMeshBuffer VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<V
 
 	immediate_submit([&](VkCommandBuffer cmd) {
 		VkBufferCopy vertexCopy{ 0 };
-		vertexCopy.dstOffset = vtxBufOffset;
+		vertexCopy.dstOffset = newMesh.vertexOffset;
 		vertexCopy.srcOffset = 0;
 		vertexCopy.size = vertexBufferSize;
 
 		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, gBuf.buffer, 1, &vertexCopy);
 
 		VkBufferCopy indexCopy{ 0 };
-		indexCopy.dstOffset = idxBufOffset;
+		indexCopy.dstOffset = newMesh.indexOffset;
 		indexCopy.srcOffset = vertexBufferSize;
 		indexCopy.size = indexBufferSize;
 
@@ -1354,10 +1368,30 @@ GPUMeshBuffer VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<V
 
 	destroy_buffer(&staging);
 
-	newSurface.vertexBufferAddress = gBuf.addr + vtxBufOffset;
-	newSurface.indexOffset = idxBufOffset;
+	meshes[meshCount++] = newMesh;
+}
 
-	return newSurface;
+void VulkanEngine::draw_mesh(uint32_t id, const Transform* transform) {
+	// Increment instance count
+
+	glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+	modelMatrix = glm::scale(modelMatrix, transform->scale);
+	modelMatrix *= glm::mat4_cast(transform->rotation);
+	modelMatrix = glm::translate(modelMatrix, transform->position);
+
+	// Write to per object storage buffer
+	void* data = oBuf.info.pMappedData;
+	memcpy((glm::mat4*)data + meshInstances[id], &modelMatrix,
+		sizeof(glm::mat4));
+
+	meshInstances[id]++;
+}
+
+void VulkanEngine::reset_instances() {
+	for (size_t i = 0; i < meshCount; i++) {
+		meshInstances[i] = 0;
+	}
 }
 
 void VulkanEngine::shader_monitor_thread() {
@@ -1524,7 +1558,7 @@ EngineResult VulkanEngine::init_tex_mesh_pipeline() {
 	// Layout is:
 	// 		0: UNIFORM_BUFFER
 	// 		1: COMBINED_IMAGE_SAMPLER
-	// @Refactor -> Currently there is an int_descriptors() function that handles
+	// @Refactor -> Currently there is an init_descriptors() function that handles
 	// 				the creation and initial allocation of desriptor sets/layouts
 	// 				... it may be worth placing this there
 	{
@@ -1587,7 +1621,7 @@ EngineResult VulkanEngine::init_tex_mesh_pipeline() {
 
 void VulkanEngine::init_default_data() {
 	// load example gltf meshes
-	testMeshes = loadGltfMeshes(this, "../../assets/basicmesh.glb").value();
+	loadGltfMeshes(this, "../../assets/basicmesh.glb");
 
 	// three default texture initialization
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
@@ -1610,8 +1644,22 @@ void VulkanEngine::init_default_data() {
 			pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
 		}
 	}
-	create_image_with_data(&errorCheckerboardImage, (void*)&pixels, VkExtent3D{ 16, 16, 1 },
-		VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	//create_image_with_data(&errorCheckerboardImage, (void*)&pixels, VkExtent3D{ 16, 16, 1 },
+		//VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	// Load Tomar's brick texture
+	int texWidth, texHeight, texChannels;
+	unsigned char* pixelsPic = stbi_load("../../assets/stone.png", &texWidth, &texHeight,
+		&texChannels, STBI_rgb_alpha);
+	if (pixelsPic == nullptr) {
+		ENGINE_ERROR("Failed to laod stone texture.")
+	}
+
+	create_image_with_data(&errorCheckerboardImage, (void*)pixelsPic,
+		VkExtent3D{ (uint32_t)texWidth, (uint32_t)texHeight, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	stbi_image_free(pixelsPic);
 
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 	sampl.magFilter = VK_FILTER_NEAREST;

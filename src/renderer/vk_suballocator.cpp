@@ -4,7 +4,7 @@
 
 uint32_t VkBufferSuballocator::create_buffer(VkDevice device, VmaAllocator allocator, 
 			VkDeviceSize allocSize, VkBufferUsageFlags usage,
-			DeviceDispatch* deviceDispatch) {
+			VmaAllocationCreateFlags vmaFlags, DeviceDispatch* deviceDispatch) {
 	VkBufferCreateInfo bufferInfo = { .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	bufferInfo.pNext = nullptr;
 	bufferInfo.size = allocSize;
@@ -14,8 +14,7 @@ uint32_t VkBufferSuballocator::create_buffer(VkDevice device, VmaAllocator alloc
 	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 	// @Review -> 	Not sure if these flags allow for the fastest possible usage
 	// 				on GPU
-	allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	allocInfo.flags = vmaFlags;
 
 	if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer, &allocation,
 			&info) != VK_SUCCESS) {

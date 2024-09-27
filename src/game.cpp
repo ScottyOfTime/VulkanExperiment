@@ -9,14 +9,35 @@ void Game::run() {
 		return;
 	}
 
-	entity_t testEntity = entityManager.create_entity();
-	entityManager.add_component(testEntity, POSITION);
-	entityManager.add_component(testEntity, VELOCITY);
-	entityManager.positions[testEntity] = glm::vec3{ 0, 0, 0 };
-	entityManager.velocities[testEntity] = glm::vec3{ 1, 1, 1 };
+	entity_t testCubes[32][32] = {};
+
+	for (size_t i = 0; i < 32; i++) {
+		for (size_t j = 0; j < 32; j++) {
+			testCubes[i][j] = entityManager.create_entity();
+			entityManager.add_component(testCubes[i][j], TRANSFORM);
+			entityManager.transforms[testCubes[i][j]] = Transform{
+				.position = glm::vec3(i * 4, j * 4, 0),
+				.rotation = glm::quat(1, 0, 0, 0),
+				.scale = glm::vec3(1, 1, 1)
+			};
+			entityManager.add_component(testCubes[i][j], MESH);
+			entityManager.meshIds[testCubes[i][j]] = 0;
+			entityManager.add_component(testCubes[i][j], VELOCITY);
+			entityManager.velocities[testCubes[i][j]] = glm::vec3{
+				0, 0, 0
+			};
+		}
+	}
 
 	SDL_Event e;
+	uint32_t prevTime = 0;
+	uint32_t currentTime = 0;
+	float dt = 0.0f;
 	while (!quit) {
+		currentTime = SDL_GetTicks();
+		dt = (currentTime - prevTime) / 1000.f;
+		printf("%f\n", dt);
+		prevTime = currentTime;
 		switch (mode) {
 			case PLAY:
 				SDL_SetWindowRelativeMouseMode(vk->window, SDL_TRUE);
@@ -41,6 +62,8 @@ void Game::run() {
 		}
 
 		system_movement(&entityManager);
+		vk->reset_instances();
+		system_render(&entityManager, vk);
 
 		//> Camera stuff should really belong elsewhere but probably
 		//> exit elsewhere but also not within renderer except for
@@ -48,16 +71,16 @@ void Game::run() {
 
 		const SDL_bool* keyStates = SDL_GetKeyboardState(NULL);
 		if (keyStates[SDL_SCANCODE_W]) {
-			vk->camera.vel.z = -1 / 100.f;
+			vk->camera.vel.z = -10 * dt;
 		}
 		if (keyStates[SDL_SCANCODE_A]) {
-			vk->camera.vel.x = -1 / 100.f;
+			vk->camera.vel.x = -10 * dt;
 		}
 		if (keyStates[SDL_SCANCODE_S]) {
-			vk->camera.vel.z = 1 / 100.f;
+			vk->camera.vel.z = 10 * dt;
 		}
 		if (keyStates[SDL_SCANCODE_D]) {
-			vk->camera.vel.x = 1 / 100.f;
+			vk->camera.vel.x = 10 * dt;
 		}
 
 		float x = 0, y = 0;

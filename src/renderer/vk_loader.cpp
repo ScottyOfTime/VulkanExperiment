@@ -4,16 +4,12 @@
 #include "vk_engine.h"
 #include "vk_types.h"
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/quaternion.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <tiny_gltf.h>
 
-std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, const char* filename) {
+void loadGltfMeshes(VulkanEngine* engine, const char* filename) {
 	ENGINE_MESSAGE_ARGS("Loading glTF %s", filename);
 
 	tinygltf::TinyGLTF gltfContext;
@@ -36,8 +32,6 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 	} else {
 		ENGINE_MESSAGE_ARGS("Loaded glTF %s", filename);
 	}
-
-	std::vector<std::shared_ptr<MeshAsset>> meshes;
 
 	std::vector<uint32_t> indices;
 	std::vector<Vertex> vertices;
@@ -146,14 +140,12 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 				vtx.color = glm::vec4(vtx.normal, 1.f);
 			}
 		}
-		newmesh.meshBuffers = engine->upload_mesh(indices, vertices);
+		engine->upload_mesh(indices, vertices, newmesh.surfaces.data(),
+			newmesh.surfaces.size(), newmesh.name.c_str());
 		fprintf(stderr, "[GLTF Loader] Found %d vertices.\n", vertices.size());
 		fprintf(stderr, "[GLTF Loader] Created %d surfaces.\n",
 			newmesh.surfaces.size());
-
-		meshes.emplace_back(std::make_shared<MeshAsset>(std::move(newmesh)));
 	}
 
 	fprintf(stderr, "Found %d meshes\n", mesh_count);
-	return meshes;
 }

@@ -18,17 +18,23 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer{
 	Vertex vertices[];
 };
 
+layout(buffer_reference, std430) readonly buffer ObjectBuffer {
+	mat4 modelMatrices[];
+};
+
 layout(push_constant) uniform constants{
 	mat4 render_matrix;
 	VertexBuffer vertexBuffer;
+	ObjectBuffer objectBuffer;
 } PushConstants;
 
 void main() {
 	// load vertex data from device address
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
+	mat4 model = PushConstants.objectBuffer.modelMatrices[gl_InstanceIndex];
 
 	// output data
-	gl_Position = PushConstants.render_matrix * vec4(v.position, 1.0f);
+	gl_Position = PushConstants.render_matrix * model * vec4(v.position, 1.0f);
 	outColor = v.color.xyz;
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;

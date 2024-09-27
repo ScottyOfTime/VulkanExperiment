@@ -26,6 +26,7 @@ if (WIN32)
 		${PROJECT_SOURCE_DIR}/third-party/tinygltf
 		${PROJECT_SOURCE_DIR}/third-party/VulkanMemoryAllocator/include
 		${PROJECT_SOURCE_DIR}/third-party/glslang
+		${PROJECT_SOURCE_DIR}/third-party/stb_image
 	)
 elseif(UNIX)
 	# @Todo -> Been developing mostly on win recently so this is old

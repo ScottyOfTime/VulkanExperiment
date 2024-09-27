@@ -1,11 +1,7 @@
 #ifndef _CAMERA_H
 #define _CAMERA_H
 
-#include <glm/glm.hpp>
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/transform.hpp>
-#include <glm/gtx/quaternion.hpp>
+#include "vk_types.h"
 
 struct Camera {
 	glm::vec3 pos;
