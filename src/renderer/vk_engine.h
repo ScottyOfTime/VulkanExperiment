@@ -47,6 +47,7 @@
 #define MAX_SHADERS			64
 #define MAX_PIPELINES		32
 #define MAX_MESHES			128
+#define MAX_LIGHTS			64
 
 #define GLOBAL_BUFFER_SIZE	128 * 1024 * 1024
 
@@ -284,6 +285,29 @@ private:
 	void					shader_monitor_thread();
 
 	/*---------------------------
+	 |  DESCRIPTORS
+	 ---------------------------*/
+	VkDescriptorPool				bindlessPool = VK_NULL_HANDLE;
+	// @Todo ->	Magic numbers for pool sizes here... need macros or
+	//			const definitions.
+	VkDescriptorPoolSize			bindlessPoolSizes[3] = {
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 128 }
+	};
+
+	VkDescriptorSetLayout			bindlessLayout = VK_NULL_HANDLE;
+	VkDescriptorSetLayoutBinding	bindings[3];
+	VkDescriptorBindingFlags		flags[3];
+	VkDescriptorType				types[3] = {
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+	};
+
+	VkDescriptorSet bindlessDescriptorSet = VK_NULL_HANDLE;
+
+	/*---------------------------
 	 |  RESOUCE ARRAYS AND BUFFERS
 	 ---------------------------*/
 	Shader					shaders[MAX_SHADERS];
@@ -306,7 +330,8 @@ private:
 	// Geometry buffer (device local, must copy data into GPU)
 	VkBufferSuballocator	gBuf;
 	// Object buffer (per instance data, mapped and can write into from CPU)
-	VkBufferSuballocator	oBuf;
+	VkBufferSuballocator	uBuf;
+	VkBufferSuballocator	lightBuffer;
 	
 	// Renderer owns all meshes loaded/uploaded and are accessed
 	// through index

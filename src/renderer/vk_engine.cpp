@@ -76,8 +76,8 @@ EngineResult VulkanEngine::init() {
 	if (res > 0) {
 		return ENGINE_FAILURE;
 	}
-	res = oBuf.create_buffer(device, allocator, GLOBAL_BUFFER_SIZE,
-		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+	res = uBuf.create_buffer(device, allocator, GLOBAL_BUFFER_SIZE,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 		VMA_ALLOCATION_CREATE_MAPPED_BIT |
 		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
@@ -85,10 +85,18 @@ EngineResult VulkanEngine::init() {
 	if (res > 0) {
 		return ENGINE_FAILURE;
 	}
+	res = lightBuffer.create_buffer(device, allocator, 8192,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VMA_ALLOCATION_CREATE_MAPPED_BIT |
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		&deviceDispatch
+	);
 
 	mainDeletionQueue.push_function("destroy gBuf", [&]() {
 		gBuf.destroy_buffer(allocator);
-		oBuf.destroy_buffer(allocator);
+		uBuf.destroy_buffer(allocator);
+		lightBuffer.destroy_buffer(allocator);
 	});
 
 	init_default_data();
@@ -273,13 +281,28 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 	availableFormats.clear();
 	availablePresentModes.clear();
 
+	// Query physical device features and propertes
 	VkPhysicalDeviceProperties2 devprops = {};
 	devprops.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 	instanceDispatch.vkGetPhysicalDeviceProperties2(device, &devprops);
-	VkPhysicalDeviceFeatures devfeats = {};
-	instanceDispatch.vkGetPhysicalDeviceFeatures(device, &devfeats);
+
+	// We want to use bindless descriptor indexing so make sure we have
+	// support for that (check the return statement of this function
+	// for particular features that are required)
+	VkPhysicalDeviceDescriptorIndexingFeatures indexingfeats = {};
+	indexingfeats.sType = 
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+	indexingfeats.pNext = nullptr;
+
+
+	VkPhysicalDeviceFeatures2 devfeats = {};
+	devfeats.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	devfeats.pNext = &indexingfeats;
+	instanceDispatch.vkGetPhysicalDeviceFeatures2(device, &devfeats);
+	
 
 	ENGINE_MESSAGE_ARGS("Found device %s: ", devprops.properties.deviceName);
+	printf("Max UBO size: %d\n", devprops.properties.limits.maxUniformBufferRange);
 
 	// Query extension Support
 	uint32_t extensionCount;
@@ -349,7 +372,13 @@ uint32_t VulkanEngine::device_suitable(VkPhysicalDevice device) {
 	}
 
 	return devprops.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-		devfeats.geometryShader;
+		devfeats.features.geometryShader &&
+		indexingfeats.shaderSampledImageArrayNonUniformIndexing &&
+		indexingfeats.descriptorBindingSampledImageUpdateAfterBind &&
+		indexingfeats.shaderUniformBufferArrayNonUniformIndexing &&
+		indexingfeats.descriptorBindingUniformBufferUpdateAfterBind &&
+		indexingfeats.shaderStorageBufferArrayNonUniformIndexing &&
+		indexingfeats.descriptorBindingStorageBufferUpdateAfterBind;
 }
 
 EngineResult VulkanEngine::select_physical_device() {
@@ -833,6 +862,71 @@ EngineResult VulkanEngine::init_sync() {
 }
 
 EngineResult VulkanEngine::init_descriptors() {
+	// Create the pool that will allocate bindless descriptors
+	VkDescriptorPoolCreateInfo poolInfo = {};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.pNext = nullptr;
+	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(sizeof(bindlessPoolSizes) /
+		sizeof(VkDescriptorPoolSize));
+	poolInfo.pPoolSizes = bindlessPoolSizes;
+	poolInfo.maxSets = 1;
+
+	VK_RUN_FN(deviceDispatch.vkCreateDescriptorPool(device, &poolInfo, nullptr,
+		&bindlessPool));
+
+	mainDeletionQueue.push_function("destroy bindless descriptor pool",
+		[&]() {
+			deviceDispatch.vkDestroyDescriptorPool(device, bindlessPool, nullptr);
+		});
+
+	// Initialize bindless descriptor set layout
+	for (size_t i = 0; i < 3; i++) {
+		bindings[i].binding = i;
+		bindings[i].descriptorType = types[i];
+		bindings[i].descriptorCount = 1000; // Dummy max value (upper bound)
+		bindings[i].stageFlags = VK_SHADER_STAGE_ALL;
+		bindings[i].pImmutableSamplers = nullptr;
+		flags[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+	}
+
+	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags;
+	bindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+	bindingFlags.pNext = nullptr;
+	bindingFlags.pBindingFlags = flags;
+	bindingFlags.bindingCount = 3;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 3;
+	layoutInfo.pBindings = bindings;
+	layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+	layoutInfo.pNext = &bindingFlags;
+
+	VK_RUN_FN(deviceDispatch.vkCreateDescriptorSetLayout(device, &layoutInfo, 
+		nullptr, &bindlessLayout));
+
+	mainDeletionQueue.push_function("destroy bindless descriptor layout",
+		[&]() {
+			deviceDispatch.vkDestroyDescriptorSetLayout(device, bindlessLayout,
+				nullptr);
+		});
+
+	// Create the bindless descriptor set
+	VkDescriptorSetAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.pNext = nullptr;
+	allocInfo.descriptorPool = bindlessPool;
+	allocInfo.pSetLayouts = &bindlessLayout;
+	allocInfo.descriptorSetCount = 1;
+
+	VK_RUN_FN(deviceDispatch.vkAllocateDescriptorSets(device, &allocInfo,
+		&bindlessDescriptorSet));
+
+	//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+	// ORIGINAL DESCRIPTOR SETUP (POSSIBLY NEEDS REVIEW TO ACCOUNT FOR
+	// NEW BINDLESS METHOD)
 	std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
 	{
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
@@ -860,7 +954,7 @@ EngineResult VulkanEngine::init_descriptors() {
 	mainDeletionQueue.push_function("vkDestroyDescriptorSetLayout & destroy_pool", [&] {
 		deviceDispatch.vkDestroyDescriptorSetLayout(device, drawImageDescriptorLayout, NULL);
 		descriptorAllocator.destroy_pool(device, &deviceDispatch);
-	});
+		});
 
 	for (size_t i = 0; i < FRAME_OVERLAP; i++) {
 		// create a descriptor pool
@@ -876,7 +970,7 @@ EngineResult VulkanEngine::init_descriptors() {
 
 		mainDeletionQueue.push_function("destroy_pools for globalSceneData per frame", [&, i]() {
 			frames[i].frameDescriptors.destroy_pools(device, &deviceDispatch);
-		});
+			});
 	}
 
 	return ENGINE_SUCCESS;
@@ -885,6 +979,8 @@ EngineResult VulkanEngine::init_descriptors() {
 EngineResult VulkanEngine::init_pipelines() {
 	// create the scene UBO
 	// @Refactor -> Probably not the place for this to be created
+	printf("UBO SIZE: %d\nUBO ACTUAL SIZE: %d\n",
+		sizeof(GPUSceneData), sizeof(sceneData));
 	create_buffer(&sceneUBO, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VMA_MEMORY_USAGE_AUTO);
 	mainDeletionQueue.push_function("destroy scene UBO", [&]() {
@@ -1009,7 +1105,17 @@ EngineResult VulkanEngine::draw() {
 	// Update sceneUBO	
 	// 1. Write to sceneData struct
 	// 2. Copy sceneData struct into sceneUBO buffer
-	GPUSceneData* sceneUniformData = (GPUSceneData*)sceneUBO.allocation->GetMappedData();
+	lightBuffer.reset();
+	PointLight p = PointLight{
+		.position = glm::vec3{4, 4, 0},
+		.color = glm::vec3{1, 1, 1},
+		.intensity = 0.f
+	};
+	lightBuffer.suballocate(sizeof(PointLight), 8);
+	PointLight* lights = (PointLight*)lightBuffer.info.pMappedData;
+	lights[0] = p;
+
+	GPUSceneData* sceneUniformData = (GPUSceneData*)sceneUBO.info.pMappedData;
 	*sceneUniformData = sceneData;
 
 
@@ -1233,6 +1339,7 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	// Bind a set in texDescLayout layout:
 	// 		0: UNIFORM_BUFFER
 	// 		1: COMBINED_IMAGE_SAMPLER
+	//		2: UNIFORM_BUFFER
 	VkDescriptorSet texSet = get_current_frame().frameDescriptors.alloc(device,
 		texDescLayout, &deviceDispatch);
 	{
@@ -1242,6 +1349,8 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 		writer.write_image(1, errorCheckerboardImage.imageView, defaultSamplerNearest,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 
 			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		writer.write_buffer(2, lightBuffer.buffer, sizeof(PointLight) * MAX_LIGHTS, 0,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
 		writer.update_set(device, texSet, &deviceDispatch);
 	}
@@ -1278,12 +1387,13 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	proj[1][1] *= -1;
 
 	pushConstants.worldMatrix = proj * view;
+	pushConstants.numLights = 1;
 
 
 	for (size_t i = 0; i < meshCount; i++) {
 		if (meshInstances[i] > 0) {
 			pushConstants.vertexBuffer = gBuf.addr + meshes[i].vertexOffset;
-			pushConstants.objectBuffer = oBuf.addr;
+			pushConstants.objectBuffer = uBuf.addr;
 
 			deviceDispatch.vkCmdPushConstants(cmd, texMeshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants),
 				&pushConstants);
@@ -1294,6 +1404,8 @@ EngineResult VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 	}
 
 	deviceDispatch.vkCmdEndRendering(cmd);
+
+	uBuf.reset();
 
 	return ENGINE_SUCCESS;
 }
@@ -1381,9 +1493,10 @@ void VulkanEngine::draw_mesh(uint32_t id, const Transform* transform) {
 	modelMatrix = glm::translate(modelMatrix, transform->position);
 
 	// Write to per object storage buffer
-	void* data = oBuf.info.pMappedData;
-	memcpy((glm::mat4*)data + meshInstances[id], &modelMatrix,
-		sizeof(glm::mat4));
+	size_t offset = uBuf.suballocate(sizeof(glm::mat4), alignof(glm::mat4));
+
+	char* data = static_cast<char*>(uBuf.info.pMappedData) + offset;
+	memcpy(data, &modelMatrix, sizeof(glm::mat4));
 
 	meshInstances[id]++;
 }
@@ -1558,6 +1671,7 @@ EngineResult VulkanEngine::init_tex_mesh_pipeline() {
 	// Layout is:
 	// 		0: UNIFORM_BUFFER
 	// 		1: COMBINED_IMAGE_SAMPLER
+	//		2: UNIFORM BUFFER
 	// @Refactor -> Currently there is an init_descriptors() function that handles
 	// 				the creation and initial allocation of desriptor sets/layouts
 	// 				... it may be worth placing this there
@@ -1565,6 +1679,7 @@ EngineResult VulkanEngine::init_tex_mesh_pipeline() {
 		DescriptorLayoutBuilder b;
 		b.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 		b.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		b.add_binding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 		texDescLayout = b.build(device, VK_SHADER_STAGE_FRAGMENT_BIT, &deviceDispatch);
 	}
 
@@ -1644,22 +1759,11 @@ void VulkanEngine::init_default_data() {
 			pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
 		}
 	}
-	//create_image_with_data(&errorCheckerboardImage, (void*)&pixels, VkExtent3D{ 16, 16, 1 },
-		//VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 
-	// Load Tomar's brick texture
-	int texWidth, texHeight, texChannels;
-	unsigned char* pixelsPic = stbi_load("../../assets/stone.png", &texWidth, &texHeight,
-		&texChannels, STBI_rgb_alpha);
-	if (pixelsPic == nullptr) {
-		ENGINE_ERROR("Failed to laod stone texture.")
-	}
 
-	create_image_with_data(&errorCheckerboardImage, (void*)pixelsPic,
-		VkExtent3D{ (uint32_t)texWidth, (uint32_t)texHeight, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+	create_image_with_data(&errorCheckerboardImage, (void*)&pixels,
+		VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
-
-	stbi_image_free(pixelsPic);
 
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 	sampl.magFilter = VK_FILTER_NEAREST;

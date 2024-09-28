@@ -50,15 +50,27 @@ struct MeshAsset {
 };
 
 struct GPUDrawPushConstants {
-	glm::mat4 worldMatrix;
+	glm::mat4		worldMatrix;
 	VkDeviceAddress vertexBuffer;
 	VkDeviceAddress objectBuffer;
+	uint32_t		numLights;
 };
+
+/*---------------------------
+|  INTERFACE TYPES (FOR USE BOTH INSIDE AND OUTSIDE OF RENDERER)
+---------------------------*/
 
 struct Transform {
 	glm::vec3 position;
 	glm::quat rotation;
 	glm::vec3 scale;
+};
+
+struct PointLight {
+	glm::vec3 position;
+	glm::vec3 color;
+	float intensity;
+	char padding[4];
 };
 
 #endif /* VK_TYPES_H */

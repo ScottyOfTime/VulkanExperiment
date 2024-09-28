@@ -53,6 +53,10 @@ size_t VkBufferSuballocator::suballocate(VkDeviceSize allocSize, VkDeviceSize al
 	return alignedOffset;
 }
 
+void VkBufferSuballocator::reset() {
+	offset = 0;
+}
+
 void VkBufferSuballocator::destroy_buffer(VmaAllocator allocator) {
 	if (buffer == VK_NULL_HANDLE) {
 		fprintf(stderr, "[Allocator] Buffer allocator not yet initialized.\n");

@@ -5,6 +5,7 @@ layout (location = 0) out vec3 outColor;
 layout (location = 1) out vec2 outUV;
 layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec3 fragPos;
+layout (location = 4) out flat uint numLights;
 
 struct Vertex {
 	vec3 position;
@@ -26,6 +27,7 @@ layout(push_constant) uniform constants{
 	mat4 render_matrix;
 	VertexBuffer vertexBuffer;
 	ObjectBuffer objectBuffer;
+	uint numLights;
 } PushConstants;
 
 void main() {
@@ -39,5 +41,6 @@ void main() {
 	outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
 	outNormal = v.normal;
-	fragPos = v.position;
+	fragPos = vec3(model * vec4(v.position, 1.0));
+	numLights = PushConstants.numLights;
 }

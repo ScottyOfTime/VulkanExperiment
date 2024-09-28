@@ -11,7 +11,7 @@ void Game::run() {
 
 	entity_t testCubes[32][32] = {};
 
-	for (size_t i = 0; i < 32; i++) {
+	/*for (size_t i = 0; i < 32; i++) {
 		for (size_t j = 0; j < 32; j++) {
 			testCubes[i][j] = entityManager.create_entity();
 			entityManager.add_component(testCubes[i][j], TRANSFORM);
@@ -27,7 +27,21 @@ void Game::run() {
 				0, 0, 0
 			};
 		}
-	}
+	}*/
+
+	entity_t testCube = entityManager.create_entity();
+	entityManager.add_component(testCube, TRANSFORM);
+	entityManager.transforms[testCube] = Transform{
+		.position = glm::vec3(0, 0, 0),
+		.rotation = glm::quat(1, 0, 0, 0),
+		.scale = glm::vec3(1, 1, 1)
+	};
+	entityManager.add_component(testCube, MESH);
+	entityManager.meshIds[testCube] = 0;
+	entityManager.add_component(testCube, VELOCITY);
+	entityManager.velocities[testCube] = glm::vec3{
+		0, 0, 0
+	};
 
 	SDL_Event e;
 	uint32_t prevTime = 0;
@@ -36,7 +50,6 @@ void Game::run() {
 	while (!quit) {
 		currentTime = SDL_GetTicks();
 		dt = (currentTime - prevTime) / 1000.f;
-		printf("%f\n", dt);
 		prevTime = currentTime;
 		switch (mode) {
 			case PLAY:

@@ -3,21 +3,6 @@
 [IN PROGRESS] --> Basic lighting
 	--> frag shader lighting
 
-[FIRST IMPLEMENTATION] --> Global Buffer Allocation implementation
-	--> One big vertex buffer
-	### Could not implement this and decided to move on to other things for now
-	### Problem was that each mesh (GLTF) can have multiple primitives and reasoning
-	### about how to represent these in one big vertex buffer was too complicated for me.
-
-	### Implemented basic suballocator that simply increments offset when suballocating,
-	### returing that offset when a suballocation is requested. Currently has no way
-	### to free allocations and reuse that space.
-
---> Investigate making a device struct that includes both VkDevice handle and
-	DeviceDispatch
-
---> Entity manager
-
 --> PBR
 
 --> Screen to world raycasting

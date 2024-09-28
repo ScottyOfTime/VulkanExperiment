@@ -15,6 +15,7 @@ public:
 							VmaAllocationCreateFlags vmaFlags,
 							DeviceDispatch* deviceDispatch);
 	size_t 				suballocate(VkDeviceSize allocSize, VkDeviceSize alignment);
+	void				reset();
 
 	void 				destroy_buffer(VmaAllocator allocator);
 

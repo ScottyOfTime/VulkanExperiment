@@ -15,6 +15,7 @@ void load_instance_dispatch_table(InstanceDispatch *disp, PFN_vkGetInstanceProcA
 		disp->vkEnumerateDeviceExtensionProperties = (PFN_vkEnumerateDeviceExtensionProperties)disp->vkGetInstanceProcAddr(inst, "vkEnumerateDeviceExtensionProperties");
 		disp->vkGetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceProperties2");
 		disp->vkGetPhysicalDeviceFeatures = (PFN_vkGetPhysicalDeviceFeatures)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceFeatures");
+		disp->vkGetPhysicalDeviceFeatures2 = (PFN_vkGetPhysicalDeviceFeatures2)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceFeatures2");
 
 		disp->vkGetPhysicalDeviceQueueFamilyProperties = (PFN_vkGetPhysicalDeviceQueueFamilyProperties)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceQueueFamilyProperties");
 		disp->vkGetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)disp->vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceSurfaceSupportKHR");
