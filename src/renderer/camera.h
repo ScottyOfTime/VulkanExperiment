@@ -20,6 +20,14 @@ struct Camera {
 		glm::quat yawRotation = glm::angleAxis(yaw, glm::vec3{ 0.f, -1.f, 0.f });
 		return glm::toMat4(yawRotation) * glm::toMat4(pitchRotation);
 	}
+	glm::vec3 calcFrontVec() {
+		glm::vec3 front;
+		float xzLen = cos(pitch);
+		front.x = xzLen * cos(yaw);
+		front.y = sin(pitch);
+		front.z = xzLen * sin(-yaw);
+		return front;
+	}
 };
 
 #endif /* _CAMERA_H */

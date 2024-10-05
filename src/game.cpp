@@ -1,6 +1,17 @@
 #include "game.h"
 
-#include "renderer/vk_engine.h"
+glm::vec3 cubePositions[] = {
+	glm::vec3(0.0f,   0.0f,   0.0f),
+	glm::vec3(5.0f,  10.0f, -30.0f),    
+	glm::vec3(-4.0f,  -6.0f,  -7.0f), 
+	glm::vec3(-10.0f, -5.0f, -25.0f),    
+	glm::vec3(7.0f,  -1.0f,  -9.0f),   
+	glm::vec3(-5.0f,   8.0f, -18.0f),   
+	glm::vec3(4.0f,  -5.0f,  -7.0f),  
+	glm::vec3(4.0f,   5.0f,  -7.0f),   
+	glm::vec3(4.0f,   0.5f,  -4.0f),    
+	glm::vec3(-3.5f,  2.5f,  -4.0f)    
+};
 
 void Game::run() {
 	vk = new VulkanEngine;
@@ -9,43 +20,47 @@ void Game::run() {
 		return;
 	}
 
-	entity_t testCubes[32][32] = {};
 
-	/*for (size_t i = 0; i < 32; i++) {
-		for (size_t j = 0; j < 32; j++) {
-			testCubes[i][j] = entityManager.create_entity();
-			entityManager.add_component(testCubes[i][j], TRANSFORM);
-			entityManager.transforms[testCubes[i][j]] = Transform{
-				.position = glm::vec3(i * 4, j * 4, 0),
-				.rotation = glm::quat(1, 0, 0, 0),
-				.scale = glm::vec3(1, 1, 1)
-			};
-			entityManager.add_component(testCubes[i][j], MESH);
-			entityManager.meshIds[testCubes[i][j]] = 0;
-			entityManager.add_component(testCubes[i][j], VELOCITY);
-			entityManager.velocities[testCubes[i][j]] = glm::vec3{
-				0, 0, 0
-			};
-		}
-	}*/
+	for (int i = 0; i < 10; ++i) {
+		entity_t sphere = entityManager.create_entity();
 
-	entity_t testCube = entityManager.create_entity();
-	entityManager.add_component(testCube, TRANSFORM);
-	entityManager.transforms[testCube] = Transform{
-		.position = glm::vec3(0, 0, 0),
+		// Add components
+		entityManager.add_component(sphere, TRANSFORM);
+		entityManager.add_component(sphere, MESH);
+		entityManager.add_component(sphere, VELOCITY);
+
+		glm::vec3 position = cubePositions[i]; // Offset from the initial sphere's position
+		float angle = 20.f * i;
+		glm::quat rotation = glm::angleAxis(glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f)); // Rotate around Y-axis
+
+		// Set components
+		entityManager.transforms[sphere] = Transform{
+			.position = position,
+			.rotation = rotation,
+			.scale = glm::vec3(1.f, 1.f, 1.f)
+		};
+		entityManager.meshIds[sphere] = 0;
+		entityManager.velocities[sphere] = glm::vec3(0.0f, 0.0f, 0.0f);
+	}
+
+	entity_t lightSphere = entityManager.create_entity();
+	entityManager.add_component(lightSphere, TRANSFORM);
+	entityManager.transforms[lightSphere] = Transform{
+		.position = glm::vec3(6, 3, 2),
 		.rotation = glm::quat(1, 0, 0, 0),
-		.scale = glm::vec3(1, 1, 1)
+		.scale = glm::vec3(0.5, 0.5, 0.5)
 	};
-	entityManager.add_component(testCube, MESH);
-	entityManager.meshIds[testCube] = 0;
-	entityManager.add_component(testCube, VELOCITY);
-	entityManager.velocities[testCube] = glm::vec3{
+	entityManager.add_component(lightSphere, MESH);
+	entityManager.meshIds[lightSphere] = 1;
+	entityManager.add_component(lightSphere, VELOCITY);
+	entityManager.velocities[lightSphere] = glm::vec3{
 		0, 0, 0
 	};
 
 	SDL_Event e;
 	uint32_t prevTime = 0;
 	uint32_t currentTime = 0;
+	Camera camera = {};
 	float dt = 0.0f;
 	while (!quit) {
 		currentTime = SDL_GetTicks();
@@ -74,8 +89,7 @@ void Game::run() {
 			ImGui_ImplSDL3_ProcessEvent(&e);
 		}
 
-		system_movement(&entityManager);
-		vk->reset_instances();
+		//system_movement(&entityManager);
 		system_render(&entityManager, vk);
 
 		//> Camera stuff should really belong elsewhere but probably
@@ -84,27 +98,29 @@ void Game::run() {
 
 		const SDL_bool* keyStates = SDL_GetKeyboardState(NULL);
 		if (keyStates[SDL_SCANCODE_W]) {
-			vk->camera.vel.z = -10 * dt;
+			camera.vel.z = -10 * dt;
 		}
 		if (keyStates[SDL_SCANCODE_A]) {
-			vk->camera.vel.x = -10 * dt;
+			camera.vel.x = -10 * dt;
 		}
 		if (keyStates[SDL_SCANCODE_S]) {
-			vk->camera.vel.z = 10 * dt;
+			camera.vel.z = 10 * dt;
 		}
 		if (keyStates[SDL_SCANCODE_D]) {
-			vk->camera.vel.x = 10 * dt;
+			camera.vel.x = 10 * dt;
 		}
 
 		float x = 0, y = 0;
 		SDL_GetRelativeMouseState(&x, &y);
 		if (mode == PLAY) {
-			vk->camera.yaw += x / 500.f;
-			vk->camera.pitch -= y / 500.f;
+			camera.yaw += x / 500.f;
+			camera.pitch -= y / 500.f;
 
-			vk->camera.pos += glm::vec3(vk->camera.calcRotationMat() * glm::vec4(vk->camera.vel * 0.5f, 0.f));
+			camera.pos += glm::vec3(camera.calcRotationMat() * glm::vec4(camera.vel * 0.5f, 0.f));
 		}
-		vk->camera.vel = { 0, 0, 0 };
+		camera.vel = { 0, 0, 0 };
+
+		vk->set_active_camera(camera);
 
 		//> Camera stuff end
 
@@ -122,14 +138,18 @@ void Game::run() {
 		if (ImGui::Begin("background")) {
 			ImGui::SliderFloat("Render Scale", &vk->renderScale, 0.3f, 1.f);
 			ImGui::Text("Mode: %s", mode ? "EDIT" : "PLAY");
-
-			ImGui::InputFloat3("Ambient Color + Strength", (float*)&vk->sceneData.ambience);
-			ImGui::SliderFloat("Ambient Strength", &vk->sceneData.ambience.a, 0, 1);
 		}
 		ImGui::End();
 
 		ImGui::Render();
 
+		vk->draw_text("SCOTTY'S ENGINE IN PROGRESS", 16, 32);
+		if (mode == EDIT) {
+			vk->draw_text("EDIT MODE", 24, 64);
+		}
+		else {
+			vk->draw_text("PLAY MODE", 24, 64);
+		}
 		vk->draw();
 	}
 }

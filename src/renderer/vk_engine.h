@@ -5,34 +5,34 @@
 // as they are called
 #define ENGINE_VERBOSE
 
-#include <stdio.h>
-#include <cmath>
-#include <string.h>
-#include <vulkan/vulkan.h>
-#include <vector>
 #include <array>
-#include <set>
+#include <cmath>
 #include <deque>
 #include <functional>
-#include <thread>
 #include <mutex>
-#include <unordered_map>
+#include <set>
+#include <stdio.h>
+#include <string.h>
+#include <thread>
+#include <vector>
 
+#include <backends/imgui_impl_sdl3.h>
+#include <backends/imgui_impl_vulkan.h>
+#include <imgui.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <vk_mem_alloc.h>
-#include <imgui.h>
-#include <backends/imgui_impl_sdl3.h>
-#include <backends/imgui_impl_vulkan.h>
+#include <vulkan/vulkan.h>
 
 #include "../os.h"
-#include "vk_dispatch.h"
-#include "vk_types.h"
-#include "vk_descriptors.h"
-#include "vk_pipelines.h"
-#include "vk_loader.h"
-#include "vk_suballocator.h"
 #include "camera.h"
+#include "vk_descriptors.h"
+#include "vk_dispatch.h"
+#include "vk_loader.h"
+#include "vk_pipelines.h"
+#include "vk_suballocator.h"
+#include "vk_text.h"
+#include "vk_types.h"
 
 /*---------------------------
  | MACROS
@@ -47,9 +47,10 @@
 #define MAX_SHADERS			64
 #define MAX_PIPELINES		32
 #define MAX_MESHES			128
-#define MAX_LIGHTS			64
+#define MAX_MATERIALS		64
 
 #define GLOBAL_BUFFER_SIZE	128 * 1024 * 1024
+#define UNIFORM_BUFFER_SIZE	16384
 
 #define ENGINE_MESSAGE(MSG) \
 	fprintf(stderr, "[VulkanEngine] INFO: " MSG "\n");
@@ -133,11 +134,17 @@ struct FrameData {
 	VkFence renderFence = NULL;
 
 	DeletionQueue deletionQueue;
-	DescriptorAllocatorGrowable frameDescriptors;
 };
 
-struct GPUSceneData {
-	glm::vec4 ambience = {1, 1, 1, 1};
+struct TextRenderData {
+	std::vector<TextVertex>	vertices;
+	std::vector<uint32_t>	indices;
+	uint32_t				charCount = 0;
+};
+
+struct DrawContext {
+	std::vector<struct Renderable>	surfaces;
+	TextRenderData					textData;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -174,26 +181,22 @@ public:
 
 	EngineResult 			immediate_submit(std::function<void(VkCommandBuffer)>&& fn);
 
-	
-
-	Camera 					camera = { 
-								.pos = glm::vec3{ 0, 0, -3 },
-								.vel = glm::vec3{ 0, 0, 0 },
-								.pitch = 0.f,
-								.yaw = 0.f
-							};
-
-	// dummy push constant for ambient light color and strength
-	GPUSceneData sceneData;
-
 	/*---------------------------
 	 |  INTERFACE
 	 ---------------------------*/
+	EngineResult			create_shader(const char* path,
+								EShLanguage stage, uint32_t* idx);
+	EngineResult			create_material(const Material* material,
+								uint32_t* idx);
 	void		 			upload_mesh(std::span<uint32_t> indices,
 								std::span<Vertex> vertices, GeoSurface* surfaces,
 								uint32_t surfaceCount, const char* meshName);
+
+	void					set_active_camera(Camera c);
 	void					draw_mesh(uint32_t id, const Transform* transform);
-	void					reset_instances();
+	void					draw_text(const char* text, float x, float y);
+
+	
 
 private:
 	VmaAllocator 			allocator;
@@ -269,14 +272,20 @@ private:
 	EngineResult		 	draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
 
 	EngineResult 			draw_geometry(VkCommandBuffer cmd);
+	EngineResult			draw_text_geometry(VkCommandBuffer cmd);
+	EngineResult			draw_skybox(VkCommandBuffer cmd);
 
-	EngineResult 			create_buffer(AllocatedBuffer* buffer, size_t allocSize, 
-								VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	void 					destroy_buffer(const AllocatedBuffer* buffer);
 	// these two values should be equal by end of program, if not
 	// indicates bug
 	uint32_t 				buffersCreated = 0;
 	uint32_t 				buffersDestroyed = 0;
+
+	DrawContext				mainDrawCtx;
+
+	/*---------------------------
+	 |  RENDERING OBJECTS & VARIABLES
+	 ---------------------------*/
+	Camera _activeCamera;
 
 	/*---------------------------
 	 |  THREADS
@@ -287,33 +296,16 @@ private:
 	/*---------------------------
 	 |  DESCRIPTORS
 	 ---------------------------*/
-	VkDescriptorPool				bindlessPool = VK_NULL_HANDLE;
-	// @Todo ->	Magic numbers for pool sizes here... need macros or
-	//			const definitions.
-	VkDescriptorPoolSize			bindlessPoolSizes[3] = {
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 128 }
-	};
-
-	VkDescriptorSetLayout			bindlessLayout = VK_NULL_HANDLE;
-	VkDescriptorSetLayoutBinding	bindings[3];
-	VkDescriptorBindingFlags		flags[3];
-	VkDescriptorType				types[3] = {
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-	};
-
-	VkDescriptorSet bindlessDescriptorSet = VK_NULL_HANDLE;
+	VkDescriptorSetLayout	bindlessDescriptorLayout = VK_NULL_HANDLE;
+	VkDescriptorSet			bindlessDescriptorSet = VK_NULL_HANDLE;
+	DescriptorAllocator		bindlessDescriptorAllocator{};
+	DescriptorWriter		bindlessDescriptorWriter{};
 
 	/*---------------------------
-	 |  RESOUCE ARRAYS AND BUFFERS
+	 |  RESOUCE ARRAYS & BUFFERS
 	 ---------------------------*/
 	Shader					shaders[MAX_SHADERS];
 	uint32_t				shaderCount = 0;
-	EngineResult			create_shader(const char* path, 
-								EShLanguage stage, uint32_t* idx);
 	void					recompile_shader(uint32_t idx);
 	void					destroy_shader(uint32_t idx);
 	std::mutex				shaderMutex;
@@ -329,54 +321,78 @@ private:
 
 	// Geometry buffer (device local, must copy data into GPU)
 	VkBufferSuballocator	gBuf;
-	// Object buffer (per instance data, mapped and can write into from CPU)
-	VkBufferSuballocator	uBuf;
-	VkBufferSuballocator	lightBuffer;
+
+	GPUSceneData			sceneData;
+	AllocatedBuffer			uSceneData;
+	VkDeviceAddress			uSceneDataAddr;
+
+	// Lighting
+	GPULightData			lightData;
+	AllocatedBuffer			uLightData;
+	VkDeviceAddress			uLightDataAddr;
+
+	AllocatedBuffer			uDirectionalLights;
+	VkDeviceAddress			uDirectionalLightsAddr;
+
+	AllocatedBuffer			uPointLights;
+	VkDeviceAddress			uPointLightsAddr;
+
+	AllocatedBuffer			uSpotLights;
+	VkDeviceAddress			uSpotLightsAddr;
+
+	// Yummy vectors cos too lazy to implement array functionality
+	std::vector
+		<DirectionalLight>	directionalLights;
+	std::vector
+		<SpotLight>			spotLights = { SpotLight{} };
+	std::vector
+		<PointLight>		pointLights;
+
+	// Buffers for text rendering
+	AllocatedBuffer			textVertexBuffer;
+	VkDeviceAddress			textVertexBufferAddr;
+	AllocatedBuffer			textIndexBuffer;
 	
 	// Renderer owns all meshes loaded/uploaded and are accessed
 	// through index
 	MeshAsset				meshes[MAX_MESHES] = {};
-	// For instanced rendering: index in this array corresponds to
-	// mesh of same index in meshes array, however, the data
-	// at the index in this array corresponds to how many entities
-	// have that mesh. This is useful for instanced rendering.
-	uint32_t				meshInstances[MAX_MESHES] = {};
-	VkDeviceMemory			meshInstanceBufferOffsets[MAX_MESHES] = {};
-	std::unordered_map<const char*, uint32_t> meshNames;
 	uint32_t				meshCount = 0;
 
-	std::vector<VkDeviceSize> meshOffsets;
+	// 
+	AllocatedBuffer			uMaterialBuffer;
+	VkDeviceAddress			uMaterialBufferAddr;
+	uint32_t				materialCount = 0;
 
 
 	/*---------------------------
-	 |  PIPELINES AND LAYOUTS 
+	 |  PIPELINES 
 	 ---------------------------*/
-	// Mesh pipeline with image/texture + sampler descriptors
-	VkDescriptorSetLayout	texDescLayout;
-	VkPipelineLayout 		texMeshPipelineLayout;
-	uint32_t				texMeshPipeline;
-	EngineResult			init_tex_mesh_pipeline();
+	VkPipelineLayout 		meshPipelineLayout;
+	uint32_t				opaquePipeline;
+	uint32_t				transparentPipeline;
+	EngineResult			init_mesh_pipelines();
 
-	// dummy mesh creation <- now being loaded from glb
-	void 					init_default_data();
+	VkPipelineLayout		skyboxPipelineLayout;
+	uint32_t				skyboxPipeline;
+	EngineResult			init_skybox_pipeline();
+	
+	VkPipelineLayout		textPipelineLayout;
+	uint32_t				textPipeline;
+	EngineResult			init_text_pipeline();
+
+	EngineResult 			init_default_data();
 
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
-	// image creation and deletion
-	EngineResult 			create_image(AllocatedImage* img, VkExtent3D size, 
-								VkFormat format, VkImageUsageFlags usage, 
-								bool mipmapped = false);
-	EngineResult			create_image_with_data(AllocatedImage* img, void* data, 
-								VkExtent3D size, VkFormat format, VkImageUsageFlags usage, 
-								bool mipmapped = false);
-	void 					destroy_image(const AllocatedImage* img);
-
 	// default image textures and samplers plus a descriptor set layout
 	// for textured images
-	AllocatedImage 			whiteImage;
-	AllocatedImage 			blackImage;
-	AllocatedImage 			greyImage;
 	AllocatedImage 			errorCheckerboardImage;
+	AllocatedImage			spaceCubeMap;
+	uint32_t				errorHandle;
+
+	AllocatedImage			containerTexture;
+
+	FontAtlas				defaultFont;
 
 	VkSampler 				defaultSamplerLinear;
 	VkSampler 				defaultSamplerNearest;

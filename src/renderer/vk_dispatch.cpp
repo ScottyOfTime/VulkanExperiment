@@ -104,6 +104,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 
 	disp->vkCmdSetViewport = (PFN_vkCmdSetViewport)disp->vkGetDeviceProcAddr(dev, "vkCmdSetViewport");
 	disp->vkCmdSetScissor = (PFN_vkCmdSetScissor)disp->vkGetDeviceProcAddr(dev, "vkCmdSetScissor");
+	disp->vkCmdClearAttachments = (PFN_vkCmdClearAttachments)disp->vkGetDeviceProcAddr(dev, "vkCmdClearAttachments");
 
 	disp->vkCmdDraw = (PFN_vkCmdDraw)disp->vkGetDeviceProcAddr(dev, "vkCmdDraw");
 	disp->vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)disp->vkGetDeviceProcAddr(dev, "vkCmdDrawIndexed");

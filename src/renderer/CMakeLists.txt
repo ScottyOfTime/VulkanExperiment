@@ -10,6 +10,8 @@ set(VULKAN_ENGINE_SRC_FILES
 	vk_pipelines.cpp
 	vk_loader.cpp
 	vk_suballocator.cpp
+	vk_text.cpp
+	vk_buffers.cpp
 )
 
 link_directories(C:/VulkanSDK/${VULKAN_SDK_VERSION}/Lib/)
@@ -27,6 +29,7 @@ if (WIN32)
 		${PROJECT_SOURCE_DIR}/third-party/VulkanMemoryAllocator/include
 		${PROJECT_SOURCE_DIR}/third-party/glslang
 		${PROJECT_SOURCE_DIR}/third-party/stb_image
+		${PROJECT_SOURCE_DIR}/third-party/stb_truetype
 	)
 elseif(UNIX)
 	# @Todo -> Been developing mostly on win recently so this is old
