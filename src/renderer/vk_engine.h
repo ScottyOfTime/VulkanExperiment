@@ -142,9 +142,20 @@ struct TextRenderData {
 	uint32_t				charCount = 0;
 };
 
+struct WireframeRenderData {
+	std::vector<Vertex>		vertices;
+	std::vector<uint32_t>	indices;
+	uint32_t				vertexCount = 0;
+};
+
 struct DrawContext {
 	std::vector<struct Renderable>	surfaces;
 	TextRenderData					textData;
+	WireframeRenderData				wireframeData;
+};
+
+struct WireFrameDrawContext {
+	
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -193,7 +204,11 @@ public:
 								uint32_t surfaceCount, const char* meshName);
 
 	void					set_active_camera(Camera c);
+	void					set_debug(uint32_t d);
+
 	void					draw_mesh(uint32_t id, const Transform* transform);
+	void					draw_wireframe(std::vector<glm::vec3>& vertices,
+								std::vector<uint32_t>& indices);
 	void					draw_text(const char* text, float x, float y);
 
 	
@@ -269,23 +284,26 @@ private:
 	AllocatedImage 			depthImage;
 	VkExtent2D 				drawExtent;
 
+	/*---------------------------
+	 |  DRAW FUNCTIONS
+	 ---------------------------*/
 	EngineResult		 	draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
 
+	EngineResult			draw_main_pass(VkCommandBuffer cmd);
 	EngineResult 			draw_geometry(VkCommandBuffer cmd);
-	EngineResult			draw_text_geometry(VkCommandBuffer cmd);
 	EngineResult			draw_skybox(VkCommandBuffer cmd);
 
-	// these two values should be equal by end of program, if not
-	// indicates bug
-	uint32_t 				buffersCreated = 0;
-	uint32_t 				buffersDestroyed = 0;
+	EngineResult			draw_wireframes(VkCommandBuffer cmd);
 
-	DrawContext				mainDrawCtx;
+	EngineResult			draw_text_geometry(VkCommandBuffer cmd);
+
+	
 
 	/*---------------------------
 	 |  RENDERING OBJECTS & VARIABLES
 	 ---------------------------*/
-	Camera _activeCamera;
+	Camera					_activeCamera;
+	uint32_t				_debugFlags;
 
 	/*---------------------------
 	 |  THREADS
@@ -352,6 +370,11 @@ private:
 	AllocatedBuffer			textVertexBuffer;
 	VkDeviceAddress			textVertexBufferAddr;
 	AllocatedBuffer			textIndexBuffer;
+
+	// Buffers for wireframe rendering
+	AllocatedBuffer			wireframeVertexBuffer;
+	VkDeviceAddress			wireframeVertexBufferAddr;
+	AllocatedBuffer			wireframeIndexBuffer;
 	
 	// Renderer owns all meshes loaded/uploaded and are accessed
 	// through index
@@ -363,26 +386,31 @@ private:
 	VkDeviceAddress			uMaterialBufferAddr;
 	uint32_t				materialCount = 0;
 
+	EngineResult			init_buffers();
+
 
 	/*---------------------------
-	 |  PIPELINES 
+	 |  PIPELINES (PIPELINES ARE UINT HANDLES INTO THE PIPELINES ARRAY)
 	 ---------------------------*/
-	VkPipelineLayout 		meshPipelineLayout;
 	uint32_t				opaquePipeline;
 	uint32_t				transparentPipeline;
 	EngineResult			init_mesh_pipelines();
 
-	VkPipelineLayout		skyboxPipelineLayout;
+	uint32_t				wireframePipeline;
+	EngineResult			init_wireframe_pipeline();
+
 	uint32_t				skyboxPipeline;
 	EngineResult			init_skybox_pipeline();
 	
-	VkPipelineLayout		textPipelineLayout;
 	uint32_t				textPipeline;
 	EngineResult			init_text_pipeline();
 
-	EngineResult 			init_default_data();
+	/*---------------------------
+	 |  DRAW CONTEXTS
+	 ---------------------------*/
+	DrawContext				mainDrawCtx;
 
-	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+	EngineResult 			init_default_data();
 
 	// default image textures and samplers plus a descriptor set layout
 	// for textured images
@@ -398,6 +426,11 @@ private:
 	VkSampler 				defaultSamplerNearest;
 
 	AllocatedBuffer sceneUBO;
+
+	// these two values should be equal by end of program, if not
+	// indicates bug
+	uint32_t 				buffersCreated = 0;
+	uint32_t 				buffersDestroyed = 0;
 };
 
 #endif /* VK_ENGINE_H */

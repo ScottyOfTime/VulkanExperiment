@@ -34,6 +34,14 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, DeviceDispatch* devi
 	colorBlending.attachmentCount = 1;
 	colorBlending.pAttachments = &colorBlendAttachment;
 
+	VkPipelineDynamicStateCreateInfo dynamicInfo = {};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.pNext = nullptr;
+	dynamicInfo.flags = 0;
+
+	dynamicInfo.pDynamicStates = dynamicStates;
+	dynamicInfo.dynamicStateCount = dynamicStateCount;
+
 	// completely clear VertexInputStateCreateInfo, as we have no need for it
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
@@ -53,15 +61,11 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, DeviceDispatch* devi
 	pipelineInfo.pMultisampleState = &multisampling;
 	pipelineInfo.pColorBlendState = &colorBlending;
 	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pDynamicState = &dynamicInfo;
 	pipelineInfo.layout = pipelineLayout;
 
 	VkDynamicState state[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
-	VkPipelineDynamicStateCreateInfo dynamicInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-	dynamicInfo.pDynamicStates = &state[0];
-	dynamicInfo.dynamicStateCount = 2;
-
-	pipelineInfo.pDynamicState = &dynamicInfo;
 
 	VkPipeline newPipeline;
 	if (deviceDispatch->vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &newPipeline)
@@ -71,6 +75,10 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, DeviceDispatch* devi
 	} else {
 		return newPipeline;
 	}
+}
+
+void PipelineBuilder::set_layout(VkPipelineLayout layout) {
+	pipelineLayout = layout;
 }
 
 void PipelineBuilder::set_vtx_shader(VkShaderModule shader) {
@@ -182,6 +190,10 @@ void PipelineBuilder::disable_depthtest() {
 	depthStencil.back = {};
 	depthStencil.minDepthBounds = 0.f;
 	depthStencil.maxDepthBounds = 1.f;
+}
+
+void PipelineBuilder::add_dynamic_state(VkDynamicState state) {
+	dynamicStates[dynamicStateCount++] = state;
 }
 
 uint32_t load_shader_module(const char* filepath, VkDevice device, 

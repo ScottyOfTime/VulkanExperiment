@@ -21,22 +21,29 @@
 class PipelineBuilder {
 public:
 	// index 0 is vertex shader and index 1 is fragment shader
-	VkPipelineShaderStageCreateInfo shaderStages[2];
+	VkPipelineShaderStageCreateInfo			shaderStages[2];
 
-	VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-	VkPipelineRasterizationStateCreateInfo rasterizer;
-	VkPipelineColorBlendAttachmentState colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo multisampling;
-	VkPipelineLayout pipelineLayout;
-	VkPipelineDepthStencilStateCreateInfo depthStencil;
-	VkPipelineRenderingCreateInfo renderInfo;
-	VkFormat colorAttachmentFormat;
+	VkPipelineInputAssemblyStateCreateInfo	inputAssembly;
+	VkPipelineRasterizationStateCreateInfo	rasterizer;
+	VkPipelineColorBlendAttachmentState		colorBlendAttachment;
+	VkPipelineMultisampleStateCreateInfo	multisampling;
+	VkPipelineLayout						pipelineLayout;
+	VkPipelineDepthStencilStateCreateInfo	depthStencil;
+	VkPipelineRenderingCreateInfo			renderInfo;
+	VkFormat								colorAttachmentFormat;
+
+	VkDynamicState							dynamicStates[16] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+	uint32_t dynamicStateCount = 2;
 
 	PipelineBuilder() { clear(); }
 
 	void clear();
 
 	VkPipeline build_pipeline(VkDevice device, DeviceDispatch* deviceDispatch);
+	void set_layout(VkPipelineLayout layout);
 	void set_vtx_shader(VkShaderModule shader);
 	void set_frag_shader(VkShaderModule shader);
 	void set_input_topology(VkPrimitiveTopology topology);
@@ -52,6 +59,8 @@ public:
 	void set_depth_format(VkFormat format);
 	void enable_depthtest(bool depthWriteEnable, VkCompareOp op);
 	void disable_depthtest();
+
+	void add_dynamic_state(VkDynamicState state);
 };
 
 struct Shader {

@@ -1,22 +1,14 @@
 <<< TO DO >>>
 
-[IN PROGRESS] --> Basic lighting
-	--> frag shader lighting
-
---> PBR
-
---> Screen to world raycasting
-
---> Application Level API
-	--> Renderable struct 
+--> Static push constant range/layout creation
+	--> Offsets and size differences for pipelines that only
+		use portions
 
 <<< BUGS >>>
 
---> Vulkan warning about descriptor sets that aren't destroyed
 
 <<< CLEANUP >>>
 
---> Indent member function and variables and group them logically
 
 --> [LOW PRIO] Remove usage of STL containers and replace with pure arrays
 	--> Benchmark this to find out if it is even worth doing
@@ -27,7 +19,4 @@
 
 <<< COMPLETED >>>
 
---> Game directory
-	--> Now that the renderer has full potential functionality (already static linked as library)
-		start making the game files as well
 

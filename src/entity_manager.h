@@ -6,6 +6,7 @@
 
 #include "renderer/vk_types.h"
 #include "renderer/vk_engine.h"
+#include "physics/phy_types.h"
 
 #define MAX_ENTITIES	1024
 #define MAX_COMPONENTS	32
@@ -16,7 +17,8 @@ typedef uint32_t entity_t;
 enum ComponentId : uint32_t {
 	TRANSFORM = 0,
 	VELOCITY = 1,
-	MESH = 2
+	MESH = 2,
+	COLLISION_BOX = 3
 };
 
 class EntityManager {
@@ -28,6 +30,7 @@ public:
 	Transform					transforms[MAX_ENTITIES] = {};
 	glm::vec3					velocities[MAX_ENTITIES] = {};
 	uint32_t					meshIds[MAX_ENTITIES] = {};
+	CollisionBox				collisionBoxes[MAX_ENTITIES] = {};
 
 	entity_t 					create_entity();
 	void						destroy_entity();
@@ -49,6 +52,7 @@ public:
 
 
 void system_movement(EntityManager* entityManager);
+void system_collision(EntityManager* entityManager, VulkanEngine* vk);
 void system_render(EntityManager* entityManager, VulkanEngine* vk);
 
 #endif /* _ENTITY_H */

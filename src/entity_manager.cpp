@@ -1,5 +1,7 @@
 #include "entity_manager.h"
 
+#include "physics/phy_util.h"
+
 #include <stdio.h>
 
 entity_t EntityManager::create_entity() {
@@ -33,6 +35,22 @@ void system_render(EntityManager* entityManager, VulkanEngine* vk) {
 			uint32_t meshId = entityManager->meshIds[e];
 
 			vk->draw_mesh(meshId, transform);
+		}
+	}
+}
+
+void system_collision(EntityManager* entityManager, VulkanEngine* vk) {
+	for (int e = 0; e < entityManager->entitiesCount; e++) {
+		if (entityManager->has_component(e, TRANSFORM) &&
+			entityManager->has_component(e, COLLISION_BOX)) {
+			Transform* transform = &entityManager->transforms[e];
+			CollisionBox* box = &entityManager->collisionBoxes[e];
+
+			std::vector<glm::vec3> boxVertices;
+			std::vector<uint32_t> boxIndices;
+			gen_collision_box_wireframe(box, boxVertices, boxIndices);
+
+			vk->draw_wireframe(boxVertices, boxIndices);
 		}
 	}
 }

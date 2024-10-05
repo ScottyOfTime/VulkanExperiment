@@ -1,5 +1,6 @@
 # Build the renderer library first, obviously
 add_subdirectory(renderer) # Builds the vulkanengine library
+add_subdirectory(physics)  # Builds the physics library
 
 add_executable(vulkan main.cpp game.cpp entity_manager.cpp)
 
@@ -11,6 +12,7 @@ if (WIN32)
 	)
 	target_link_libraries(vulkan PRIVATE
 		vulkanengine
+		libphysics
 	)
 elseif(UNIX)
 	# @Todo -> Been developing mostly on win recently so this is old
@@ -22,6 +24,7 @@ elseif(UNIX)
 	)
 	target_link_libraries(vulkan
 		vulkanengine
+		libphysics
 		${SDL2_LIBRARIES}
 	)
 endif()
