@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 project(VulkanExperiment)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
 
 if (NOT USE_PLATFORM MATCHES "VK_USE_PLATFORM_.*")
 	if (WIN32)

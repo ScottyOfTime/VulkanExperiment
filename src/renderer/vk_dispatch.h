@@ -104,6 +104,7 @@ struct DeviceDispatch {
 	PFN_vkCmdSetViewport vkCmdSetViewport;
 	PFN_vkCmdSetScissor vkCmdSetScissor;
 	PFN_vkCmdSetLineWidth vkCmdSetLineWidth;
+	PFN_vkCmdSetDepthTestEnable vkCmdSetDepthTestEnable;
 
 	PFN_vkCmdClearAttachments vkCmdClearAttachments;
 

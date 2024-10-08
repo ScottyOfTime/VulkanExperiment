@@ -12,6 +12,7 @@ set(VULKAN_ENGINE_SRC_FILES
 	vk_suballocator.cpp
 	vk_text.cpp
 	vk_buffers.cpp
+	vk_context.cpp
 )
 
 link_directories(C:/VulkanSDK/${VULKAN_SDK_VERSION}/Lib/)

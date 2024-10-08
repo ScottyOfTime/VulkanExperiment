@@ -1,7 +1,6 @@
 #include "vk_engine.h"
 
 #include "vk_images.h"
-#include "vk_buffers.h"
 
 #define VMA_IMPLEMENTATION
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
@@ -305,6 +304,7 @@ VulkanEngine::device_suitable(VkPhysicalDevice device) {
 	for (int i = 0; i < vkDeviceExtensions.size(); i++) {
 		uint32_t extensionFound = 0;
 		for (int j = 0; i < extensionCount; j++) {
+			// @TODO ->	SO BAD >:-(
 			if (!strcmp(vkDeviceExtensions[i], extensions[j].extensionName)) {
 				extensionFound = 1;
 				break;
@@ -927,6 +927,12 @@ VulkanEngine::init_pipelines() {
 	if (init_mesh_pipelines() != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
+	if (init_line_pipeline() != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+	if (init_triangle_pipeline() != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
 	if (init_skybox_pipeline() != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
@@ -1072,6 +1078,7 @@ VulkanEngine::recompile_shader(uint32_t idx) {
 	// and depth format are stack allocated pointers in the scope of the builder
 	// meaning after the build_pipeline() function is called, these values
 	// are not stored in the builder -> builder probably needs some refactoring
+	// @TODO ->	REFACTOR BUILDER PLEASE
 	for (size_t i = 0; i < pipelineCount; i++) {
 		if (pipelines[i].vtxShaderIdx == idx) {
 			VkPipeline oldPipeline = pipelines[i].pipeline;
@@ -1183,20 +1190,22 @@ VulkanEngine::init_buffers() {
 		return ENGINE_FAILURE;
 	}
 
-	// Create text vertex buffer
 	BufferCreateInfo bufferInfo;
+	VkBufferDeviceAddressInfo addrInfo;
+	addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+	addrInfo.pNext = nullptr;
+
+	/*---------------------------
+	 |  VERTEX BUFFERS
+	 ---------------------------*/
 	bufferInfo.allocator = allocator;
-	bufferInfo.allocSize = GLOBAL_BUFFER_SIZE;
+	bufferInfo.allocSize = 128 * 1024;
 	bufferInfo.flags = 0;
 	bufferInfo.pBuffer = &textVertexBuffer;
 	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	create_buffer(&bufferInfo);
-
-	VkBufferDeviceAddressInfo addrInfo;
-	addrInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-	addrInfo.pNext = nullptr;
 	addrInfo.buffer = textVertexBuffer.buffer;
 	textVertexBufferAddr =
 		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
@@ -1204,11 +1213,27 @@ VulkanEngine::init_buffers() {
 	// Create wireframe vertex buffer
 	bufferInfo.pBuffer = &wireframeVertexBuffer;
 	create_buffer(&bufferInfo);
-
 	addrInfo.buffer = wireframeVertexBuffer.buffer;
 	wireframeVertexBufferAddr =
 		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
 
+	// Create line vertex buffer
+	bufferInfo.pBuffer = &lineVertexBuffer;
+	create_buffer(&bufferInfo);
+	addrInfo.buffer = lineVertexBuffer.buffer;
+	lineVertexBufferAddr =
+		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
+
+	// Create triangle vertex buffer
+	bufferInfo.pBuffer = &triangleVertexBuffer;
+	create_buffer(&bufferInfo);
+	addrInfo.buffer = triangleVertexBuffer.buffer;
+	triangleVertexBufferAddr =
+		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
+
+	/*---------------------------
+	 |  INDEX BUFFERS
+	 ---------------------------*/
 	// Create text index buffer
 	bufferInfo.pBuffer = &textIndexBuffer;
 	bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -1219,6 +1244,9 @@ VulkanEngine::init_buffers() {
 	bufferInfo.pBuffer = &wireframeIndexBuffer;
 	create_buffer(&bufferInfo);
 
+	/*---------------------------
+	 |  UNIFORM BUFFERS
+	 ---------------------------*/
 	// Create scene data UBO
 	bufferInfo.pBuffer = &uSceneData;
 	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
@@ -1276,16 +1304,18 @@ VulkanEngine::init_buffers() {
 	mainDeletionQueue.push_function("destroying base buffers",
 		[&]() {
 			gBuf.destroy_buffer(allocator);
-			destroy_buffer(allocator, &uLightData);
-			destroy_buffer(allocator, &uPointLights);
-			destroy_buffer(allocator, &uDirectionalLights);
-			destroy_buffer(allocator, &uSpotLights);
-			destroy_buffer(allocator, &textVertexBuffer);
-			destroy_buffer(allocator, &textIndexBuffer);
-			destroy_buffer(allocator, &wireframeVertexBuffer);
-			destroy_buffer(allocator, &wireframeIndexBuffer);
-			destroy_buffer(allocator, &uSceneData);
-			destroy_buffer(allocator, &uMaterialBuffer);
+			destroy_buffer(&triangleVertexBuffer);
+			destroy_buffer(&lineVertexBuffer);
+			destroy_buffer(&uLightData);
+			destroy_buffer(&uPointLights);
+			destroy_buffer(&uDirectionalLights);
+			destroy_buffer(&uSpotLights);
+			destroy_buffer(&textVertexBuffer);
+			destroy_buffer(&textIndexBuffer);
+			destroy_buffer(&wireframeVertexBuffer);
+			destroy_buffer(&wireframeIndexBuffer);
+			destroy_buffer(&uSceneData);
+			destroy_buffer(&uMaterialBuffer);
 		});
 
 	return ENGINE_SUCCESS;
@@ -1315,11 +1345,11 @@ VulkanEngine::init_mesh_pipelines() {
 		&layout));
 
 	uint32_t vtxShader, fragShader;
-	if (create_shader("../../shaders/colored_triangle_mesh.vert",
+	if (create_shader("../../shaders/mesh.vert",
 		EShLangVertex, &vtxShader) != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
-	if (create_shader("../../shaders/tex_image.frag",
+	if (create_shader("../../shaders/mesh.frag",
 		EShLangFragment, &fragShader) != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
@@ -1343,6 +1373,104 @@ VulkanEngine::init_mesh_pipelines() {
 	builder.enable_blending_additive();
 
 	create_pipeline(&builder, vtxShader, fragShader, &transparentPipeline);
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult
+VulkanEngine::init_line_pipeline() {
+	// For lines, we are only interested in sending the scene data
+	// and a vertex buffer (list of lines)
+	VkPushConstantRange bufferRange{};
+	bufferRange.offset = 0;
+	bufferRange.size = 2 * sizeof(VkDeviceAddress);
+	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkPipelineLayoutCreateInfo layoutCi = { .sType =
+		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	layoutCi.pNext = nullptr;
+	layoutCi.pPushConstantRanges = &bufferRange;
+	layoutCi.pushConstantRangeCount = 1;
+	layoutCi.pSetLayouts = nullptr;
+	layoutCi.setLayoutCount = 0;
+
+	VkPipelineLayout layout;
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &layoutCi, nullptr, &layout));
+
+	uint32_t vtxShader, fragShader;
+	if (create_shader("../../shaders/line.vert",
+		EShLangVertex, &vtxShader) != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+	if (create_shader("../../shaders/line.frag",
+		EShLangFragment, &fragShader) != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+
+	PipelineBuilder builder;
+
+	builder.set_layout(layout);
+	builder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+	builder.set_polygon_mode(VK_POLYGON_MODE_LINE);
+	builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	builder.set_multisampling_none();
+	builder.disable_blending();
+	builder.enable_depthtest(true, VK_COMPARE_OP_LESS);
+
+	builder.set_color_attachment_format(drawImage.imageFormat);
+	builder.set_depth_format(depthImage.imageFormat);
+
+	builder.add_dynamic_state(VK_DYNAMIC_STATE_LINE_WIDTH);
+
+	create_pipeline(&builder, vtxShader, fragShader, &linePipeline);
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult
+VulkanEngine::init_triangle_pipeline() {
+	// For triangles, we are only interested in sending the scene data
+	// and a vertex buffer (list of lines)
+	VkPushConstantRange bufferRange{};
+	bufferRange.offset = 0;
+	bufferRange.size = 2 * sizeof(VkDeviceAddress);
+	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkPipelineLayoutCreateInfo layoutCi = { .sType =
+		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	layoutCi.pNext = nullptr;
+	layoutCi.pPushConstantRanges = &bufferRange;
+	layoutCi.pushConstantRangeCount = 1;
+	layoutCi.pSetLayouts = nullptr;
+	layoutCi.setLayoutCount = 0;
+
+	VkPipelineLayout layout;
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &layoutCi, nullptr, &layout));
+
+	uint32_t vtxShader, fragShader;
+	if (create_shader("../../shaders/triangle.vert",
+		EShLangVertex, &vtxShader) != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+	if (create_shader("../../shaders/triangle.frag",
+		EShLangFragment, &fragShader) != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+
+	PipelineBuilder builder;
+
+	builder.set_layout(layout);
+	builder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	builder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	builder.set_multisampling_none();
+	builder.disable_blending();
+	builder.enable_depthtest(true, VK_COMPARE_OP_LESS);
+
+	builder.set_color_attachment_format(drawImage.imageFormat);
+	builder.set_depth_format(depthImage.imageFormat);
+
+	create_pipeline(&builder, vtxShader, fragShader, &trianglePipeline);
 
 	return ENGINE_SUCCESS;
 }
@@ -1395,6 +1523,7 @@ VulkanEngine::init_wireframe_pipeline() {
 	builder.set_color_attachment_format(drawImage.imageFormat);
 
 	builder.add_dynamic_state(VK_DYNAMIC_STATE_LINE_WIDTH);
+	builder.add_dynamic_state(VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE);
 
 	create_pipeline(&builder, vtxShader, fragShader, &wireframePipeline);
 
@@ -1585,7 +1714,7 @@ VulkanEngine::init_default_data() {
 	fontInfo.pDeviceDispatch = &deviceDispatch;
 	fontInfo.ttfPath = "../../assets/fonts/Roboto-Regular.ttf";
 	fontInfo.size = 32;
-	defaultFont.load(&fontInfo);
+	defaultFont.create(&fontInfo);
 
 	uint32_t idx = 0;
 	idx = bindlessDescriptorWriter.write_image(0, defaultFont.texture.imageView,
@@ -1651,6 +1780,15 @@ VulkanEngine::init_default_data() {
  *  These are functions that are related to drawing and/or
  *  are called frequently (per frame or otherwise).
  */
+
+void
+VulkanEngine::begin() {
+	// ImGui
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL3_NewFrame();
+	ImGui::NewFrame();
+	_mainDrawContext.clear();
+}
 
 EngineResult
 VulkanEngine::draw() {
@@ -1719,10 +1857,9 @@ VulkanEngine::draw() {
 	);
 	*data = sceneData;
 
-	draw_main_pass(cmd);
-
-	if (!mainDrawCtx.textData.vertices.empty()) {
-		draw_text_geometry(cmd);
+	render_main_pass(cmd);
+	if (_debugFlags & DEBUG_FLAGS_ENABLE) {
+		render_debug_pass(cmd);
 	}
 
 	// Transition the draw image and the swapchain image into their correct trnasfer layouts
@@ -1738,7 +1875,7 @@ VulkanEngine::draw() {
 	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &deviceDispatch);
 
-	draw_imgui(cmd, swapchainImgViews[swapchainImgIndex]);
+	render_imgui(cmd, swapchainImgViews[swapchainImgIndex]);
 
 	transition_image(cmd, swapchainImgs[swapchainImgIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		&deviceDispatch);
@@ -1803,7 +1940,6 @@ VulkanEngine::draw() {
 	}
 
 	frameNumber++;
-	mainDrawCtx.surfaces.clear();
 	return ENGINE_SUCCESS;
 }
 
@@ -1861,7 +1997,7 @@ VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& fn) {
 }
 
 EngineResult
-VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
+VulkanEngine::render_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
 	VkRenderingAttachmentInfo rAttachInfo = {};
 	rAttachInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	rAttachInfo.pNext = NULL;
@@ -1882,6 +2018,8 @@ VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
 
 	deviceDispatch.vkCmdBeginRendering(cmd, &rInfo);
 
+	ImGui::Render();
+
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
@@ -1890,7 +2028,7 @@ VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
 }
 
 EngineResult
-VulkanEngine::draw_main_pass(VkCommandBuffer cmd) {
+VulkanEngine::render_main_pass(VkCommandBuffer cmd) {
 	VkRenderingAttachmentInfo colorAttachment = {};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	colorAttachment.pNext = NULL;
@@ -1942,9 +2080,11 @@ VulkanEngine::draw_main_pass(VkCommandBuffer cmd) {
 
 	deviceDispatch.vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	draw_geometry(cmd);
-	draw_skybox(cmd);
-	draw_wireframes(cmd);
+	//render_geometry(cmd);
+	render_skybox(cmd);
+	//render_wireframes(cmd);
+	//render_lines(cmd);
+	//render_triangles(cmd);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 
@@ -1952,7 +2092,7 @@ VulkanEngine::draw_main_pass(VkCommandBuffer cmd) {
 }
 
 EngineResult
-VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
+VulkanEngine::render_geometry(VkCommandBuffer cmd) {
 	Pipeline p = pipelines[opaquePipeline];
 
 	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, 
@@ -1962,36 +2102,36 @@ VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 		p.layout, 0, 1, &bindlessDescriptorSet, 0, nullptr);
 	
 
-	for (size_t i = 0; i < mainDrawCtx.surfaces.size(); i++) {
-		const Renderable* r = &mainDrawCtx.surfaces[i];
+	for (size_t i = 0; i < _mainDrawContext._surfaceData.size(); i++) {
+		const SurfaceDrawData* surface = &_mainDrawContext._surfaceData[i];
 		deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipelines[opaquePipeline].pipeline);
 		deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipelines[opaquePipeline].layout, 0, 1, &bindlessDescriptorSet,
 			0, 0);
 
-		deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, r->indexBuffer, 
+		deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, surface->indexBufferAddr, 
 			VK_INDEX_TYPE_UINT32);
 
-		GPUDrawPushConstants p;
-		p.vertexBuffer = gBuf.addr + r->vertexBuffer;
-		p.sceneBuffer = uSceneDataAddr;
-		p.materialBuffer = uMaterialBufferAddr;
-		p.lightBuffer = uLightDataAddr;
-		p.materialID = r->materialID;
-		p.model = r->transform;
-		p.viewPos = _activeCamera.pos;
+		GPUDrawPushConstants pc;
+		pc.vertexBuffer = gBuf.addr + surface->vertexBufferAddr;
+		pc.sceneBuffer = uSceneDataAddr;
+		pc.materialBuffer = uMaterialBufferAddr;
+		pc.lightBuffer = uLightDataAddr;
+		pc.materialID = surface->materialID;
+		pc.model = surface->transform;
+		pc.viewPos = _activeCamera.pos;
 		deviceDispatch.vkCmdPushConstants(cmd, pipelines[opaquePipeline].layout,
 			VK_SHADER_STAGE_ALL_GRAPHICS, 0, sizeof(GPUDrawPushConstants), &p);
 
-		deviceDispatch.vkCmdDrawIndexed(cmd, r->indexCount, 1, r->firstIndex, 0, 0);
+		deviceDispatch.vkCmdDrawIndexed(cmd, surface->indexCount, 1, surface->firstIndex, 0, 0);
 	}
 
 	return ENGINE_SUCCESS;
 }
 
 EngineResult
-VulkanEngine::draw_skybox(VkCommandBuffer cmd) {
+VulkanEngine::render_skybox(VkCommandBuffer cmd) {
 
 	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipelines[skyboxPipeline].pipeline);
@@ -2023,8 +2163,138 @@ VulkanEngine::draw_skybox(VkCommandBuffer cmd) {
 }
 
 EngineResult
-VulkanEngine::draw_wireframes(VkCommandBuffer cmd) {
+VulkanEngine::render_debug_pass(VkCommandBuffer cmd) {
+	VkRenderingAttachmentInfo colorAttachment = {};
+	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	colorAttachment.pNext = nullptr;
 
+	colorAttachment.imageView = drawImage.imageView;
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo renderInfo = {};
+	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderInfo.pNext = nullptr;
+
+	renderInfo.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, drawExtent };
+	renderInfo.layerCount = 1;
+	renderInfo.colorAttachmentCount = 1;
+	renderInfo.pColorAttachments = &colorAttachment;
+
+	deviceDispatch.vkCmdBeginRendering(cmd, &renderInfo);
+
+	// Render scene geometry wireframe if enabled
+	if (_debugFlags & DEBUG_FLAGS_GEOMETRY_WIREFRAME) {
+		Pipeline p = pipelines[wireframePipeline];
+		deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipeline);
+		deviceDispatch.vkCmdSetDepthTestEnable(cmd, VK_FALSE);
+		deviceDispatch.vkCmdSetLineWidth(cmd, 1.f);
+		for (size_t i = 0; i < _mainDrawContext._surfaceData.size(); i++) {
+			const SurfaceDrawData* surface = &_mainDrawContext._surfaceData[i];
+			deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, surface->indexBufferAddr,
+				VK_INDEX_TYPE_UINT32);
+
+			GPUDrawPushConstants pc;
+			pc.vertexBuffer = gBuf.addr + surface->vertexBufferAddr;
+			pc.sceneBuffer = uSceneDataAddr;
+			pc.model = surface->transform;
+			deviceDispatch.vkCmdPushConstants(cmd, p.layout, VK_SHADER_STAGE_ALL_GRAPHICS,
+				0, sizeof(GPUDrawPushConstants), &pc);
+			deviceDispatch.vkCmdDrawIndexed(cmd, surface->indexCount, 1, surface->firstIndex, 0, 0);
+		}
+	}
+
+	deviceDispatch.vkCmdEndRendering(cmd);
+
+	if (ImGui::Begin("Renderer Debugging")) {
+		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0);
+		ImGui::CheckboxFlags("Geometry Wireframe", &_debugFlags, DEBUG_FLAGS_GEOMETRY_WIREFRAME);
+	}
+	ImGui::End();
+
+	return ENGINE_SUCCESS;
+}
+
+
+EngineResult
+VulkanEngine::render_lines(VkCommandBuffer cmd) {
+	// Nothing to draw if no vertices recorded in lineCtx
+	if (_mainDrawContext._lineData.size() <= 0) {
+		return ENGINE_SUCCESS;
+	}
+
+	LineVertex* lineData = _mainDrawContext._lineData.data();
+	size_t vtxSize = _mainDrawContext._lineData.size() * sizeof(LineVertex);
+
+	void* data = (void*)lineData;
+
+	CopyDataToBufferInfo copyInfo;
+	copyInfo.buffer = lineVertexBuffer.buffer;
+	copyInfo.allocator = allocator;
+	copyInfo.pData = data;
+	copyInfo.size = vtxSize;
+	copyInfo.device = device;
+	copyInfo.pDeviceDispatch = &deviceDispatch;
+	copyInfo.cmdBuf = immCmdBuf;
+	copyInfo.cmdFence = immFence;
+	copyInfo.queue = graphicsQueue;
+	copy_data_to_buffer(&copyInfo);
+
+	Pipeline p = pipelines[linePipeline];
+
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		p.pipeline);
+	deviceDispatch.vkCmdSetLineWidth(cmd, 1);
+
+	GPUDrawPushConstants pc;
+	pc.sceneBuffer = uSceneDataAddr;
+	pc.vertexBuffer = lineVertexBufferAddr;
+
+	deviceDispatch.vkCmdPushConstants(cmd, p.layout,
+		VK_SHADER_STAGE_VERTEX_BIT, 0, 
+		2 * sizeof(VkDeviceAddress), &pc);
+	deviceDispatch.vkCmdDraw(cmd, _mainDrawContext._lineData.size(), 1, 0, 0);
+}
+
+EngineResult
+VulkanEngine::render_triangles(VkCommandBuffer cmd) {
+	if (_mainDrawContext._triangleData.size() <= 0) {
+		return ENGINE_SUCCESS;
+	}
+
+	void* data = (void*)_mainDrawContext._triangleData.data();
+	size_t vtxSize = _mainDrawContext._triangleData.size() * sizeof(TriangleVertex);
+
+	CopyDataToBufferInfo copyInfo;
+	copyInfo.buffer = triangleVertexBuffer.buffer;
+	copyInfo.allocator = allocator;
+	copyInfo.pData = data;
+	copyInfo.size = vtxSize;
+	copyInfo.device = device;
+	copyInfo.pDeviceDispatch = &deviceDispatch;
+	copyInfo.cmdBuf = immCmdBuf;
+	copyInfo.cmdFence = immFence;
+	copyInfo.queue = graphicsQueue;
+	copy_data_to_buffer(&copyInfo);
+
+	Pipeline p = pipelines[trianglePipeline];
+
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		p.pipeline);
+
+	GPUDrawPushConstants pc;
+	pc.sceneBuffer = uSceneDataAddr;
+	pc.vertexBuffer = triangleVertexBufferAddr;
+
+	deviceDispatch.vkCmdPushConstants(cmd, p.layout,
+		VK_SHADER_STAGE_VERTEX_BIT, 0,
+		2 * sizeof(VkDeviceAddress), &pc);
+	deviceDispatch.vkCmdDraw(cmd, _mainDrawContext._triangleData.size(), 1, 0, 0);
+}
+
+EngineResult
+VulkanEngine::render_wireframes(VkCommandBuffer cmd) {
 	Pipeline p = pipelines[wireframePipeline];
 
 	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2033,9 +2303,9 @@ VulkanEngine::draw_wireframes(VkCommandBuffer cmd) {
 		p.layout, 0, 1, &bindlessDescriptorSet, 0, nullptr);
 	deviceDispatch.vkCmdSetLineWidth(cmd, 2.0);
 
-	if (mainDrawCtx.wireframeData.indices.size() > 0) {
-		size_t vtxSize = mainDrawCtx.wireframeData.vertices.size() * sizeof(Vertex);
-		size_t idxSize = mainDrawCtx.wireframeData.indices.size() * sizeof(uint32_t);
+	if (_mainDrawContext._wireframeData.indices.size() > 0) {
+		size_t vtxSize = _mainDrawContext._wireframeData.vertices.size() * sizeof(Vertex);
+		size_t idxSize = _mainDrawContext._wireframeData.indices.size() * sizeof(uint32_t);
 		AllocatedBuffer uploadBuffer;
 		BufferCreateInfo bufferInfo;
 		bufferInfo.allocator = allocator;
@@ -2047,8 +2317,8 @@ VulkanEngine::draw_wireframes(VkCommandBuffer cmd) {
 		create_buffer(&bufferInfo);
 
 		void* data = uploadBuffer.info.pMappedData;
-		memcpy(data, mainDrawCtx.wireframeData.vertices.data(), vtxSize);
-		memcpy((char*)data + vtxSize, mainDrawCtx.wireframeData.indices.data(), idxSize);
+		memcpy(data, _mainDrawContext._wireframeData.vertices.data(), vtxSize);
+		memcpy((char*)data + vtxSize, _mainDrawContext._wireframeData.indices.data(), idxSize);
 
 
 		immediate_submit([&](VkCommandBuffer cmd) {
@@ -2069,7 +2339,7 @@ VulkanEngine::draw_wireframes(VkCommandBuffer cmd) {
 				wireframeIndexBuffer.buffer, 1, &indexCopy);
 			});
 
-		destroy_buffer(allocator, &uploadBuffer);
+		destroy_buffer(&uploadBuffer);
 
 		deviceDispatch.vkCmdBindIndexBuffer(cmd, wireframeIndexBuffer.buffer,
 			0, VK_INDEX_TYPE_UINT32);
@@ -2081,74 +2351,38 @@ VulkanEngine::draw_wireframes(VkCommandBuffer cmd) {
 		deviceDispatch.vkCmdPushConstants(cmd, p.layout,
 			VK_SHADER_STAGE_ALL_GRAPHICS, 0, sizeof(GPUDrawPushConstants), &pc);
 
-		deviceDispatch.vkCmdDrawIndexed(cmd, mainDrawCtx.wireframeData.indices.size(),
+		deviceDispatch.vkCmdDrawIndexed(cmd, _mainDrawContext._wireframeData.indices.size(),
 			1, 0, 0, 0);
-
-		mainDrawCtx.wireframeData.indices.clear();
-		mainDrawCtx.wireframeData.vertices.clear();
-		mainDrawCtx.wireframeData.vertexCount = 0;
-	}
-
-	if (_debugFlags) {
-		for (size_t i = 0; i < mainDrawCtx.surfaces.size(); i++) {
-			const Renderable* r = &mainDrawCtx.surfaces[i];
-			deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, r->indexBuffer,
-				VK_INDEX_TYPE_UINT32);
-
-			GPUDrawPushConstants pc;
-			pc.vertexBuffer = gBuf.addr + r->vertexBuffer;
-			pc.sceneBuffer = uSceneDataAddr;
-			pc.model = r->transform;
-			deviceDispatch.vkCmdPushConstants(cmd, p.layout,
-				VK_SHADER_STAGE_ALL_GRAPHICS, 0, sizeof(GPUDrawPushConstants), &pc);
-
-			deviceDispatch.vkCmdDrawIndexed(cmd, r->indexCount, 1, r->firstIndex,
-				0, 0);
-		}
 	}
 
 	return ENGINE_SUCCESS;
 }
 
 EngineResult
-VulkanEngine::draw_text_geometry(VkCommandBuffer cmd) {
-	// Write text data to buffers
-	size_t vtxSize = mainDrawCtx.textData.vertices.size() * sizeof(TextVertex);
-	size_t idxSize = mainDrawCtx.textData.indices.size() * sizeof(uint32_t);
-	AllocatedBuffer uploadBuffer;
-	BufferCreateInfo bufferInfo;
-	bufferInfo.allocator = allocator;
-	bufferInfo.allocSize = vtxSize + idxSize;
-	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	bufferInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-	bufferInfo.pBuffer = &uploadBuffer;
-	create_buffer(&bufferInfo);
+VulkanEngine::render_text_geometry(VkCommandBuffer cmd) {
+	// Write text data to buffer
+	void* data = (void*)_mainDrawContext._textData.vertices.data();
+	size_t size = sizeof(TextVertex) * _mainDrawContext._textData.vertices.size();
 
-	void* data = uploadBuffer.info.pMappedData;
-	memcpy(data, mainDrawCtx.textData.vertices.data(), vtxSize);
-	memcpy((char*)data + vtxSize, mainDrawCtx.textData.indices.data(), idxSize);
+	CopyDataToBufferInfo copyInfo;
+	copyInfo.buffer = textVertexBuffer.buffer;
+	copyInfo.allocator = allocator;
+	copyInfo.pData = data;
+	copyInfo.size = size;
+	copyInfo.device = device;
+	copyInfo.pDeviceDispatch = &deviceDispatch;
+	copyInfo.cmdBuf = immCmdBuf;
+	copyInfo.cmdFence = immFence;
+	copyInfo.queue = graphicsQueue;
+	copy_data_to_buffer(&copyInfo);
 
+	data = (void*)_mainDrawContext._textData.indices.data();
+	size = sizeof(uint32_t) * _mainDrawContext._textData.indices.size();
 
-	immediate_submit([&](VkCommandBuffer cmd) {
-		VkBufferCopy vertexCopy{ 0 };
-		vertexCopy.dstOffset = 0;
-		vertexCopy.srcOffset = 0;
-		vertexCopy.size = vtxSize;
-
-		deviceDispatch.vkCmdCopyBuffer(cmd, uploadBuffer.buffer,
-			textVertexBuffer.buffer, 1, &vertexCopy);
-
-		VkBufferCopy indexCopy{ 0 };
-		indexCopy.dstOffset = 0;
-		indexCopy.srcOffset = vtxSize;
-		indexCopy.size = idxSize;
-
-		deviceDispatch.vkCmdCopyBuffer(cmd, uploadBuffer.buffer,
-			textIndexBuffer.buffer, 1, &indexCopy);
-		});
-
-	destroy_buffer(allocator, &uploadBuffer);
+	copyInfo.buffer = textIndexBuffer.buffer;
+	copyInfo.pData = data;
+	copyInfo.size = size;
+	copy_data_to_buffer(&copyInfo);
 
 	VkRenderingAttachmentInfo colorAttachment = {};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -2193,14 +2427,10 @@ VulkanEngine::draw_text_geometry(VkCommandBuffer cmd) {
 	deviceDispatch.vkCmdPushConstants(cmd, pipelines[textPipeline].layout,
 		VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pc);
 
-	deviceDispatch.vkCmdDrawIndexed(cmd, mainDrawCtx.textData.indices.size(),
+	deviceDispatch.vkCmdDrawIndexed(cmd, _mainDrawContext._textData.indices.size(),
 		1, 0, 0, 0);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
-
-	mainDrawCtx.textData.vertices.clear();
-	mainDrawCtx.textData.indices.clear();
-	mainDrawCtx.textData.charCount = 0;
 
 	return ENGINE_SUCCESS;
 }
@@ -2222,8 +2452,14 @@ VulkanEngine::set_active_camera(Camera c) {
 
 // Set the debug flags for rendering debug information
 void
-VulkanEngine::set_debug(uint32_t d) {
-	_debugFlags = d;
+VulkanEngine::set_debug_flags(DebugFlags flags) {
+	_debugFlags |= flags;
+}
+
+// Clear debug flags
+void
+VulkanEngine::clear_debug_flags(DebugFlags flags) {
+	_debugFlags &= ~flags;
 }
 
 // Upload a mesh to the VulkanEngine (also uploads to gBuf)
@@ -2278,63 +2514,43 @@ VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertice
 		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, gBuf.buffer, 1, &indexCopy);
 		});
 
-	destroy_buffer(allocator, &staging);
+	destroy_buffer(&staging);
 
 	meshes[meshCount++] = newMesh;
+}
+
+// Adds the line to the main draw context
+void
+VulkanEngine::draw_line(glm::vec3 from, glm::vec3 to, glm::vec4 color) {
+	_mainDrawContext.add_line(from, to, color);
+}
+
+// Adds trianlge vertices to the main draw context (does not support indexed drawing rn)
+// @TODO ->	Indexed drawing please
+void
+VulkanEngine::draw_triangle(glm::vec3 vertices[3], glm::vec4 color) {
+	_mainDrawContext.add_triangle(vertices, color);
 }
 
 // Adds the mesh with 'id' and transform data 'transform' to the
 // main draw context (to be drawn in this frame).
 void
 VulkanEngine::draw_mesh(uint32_t id, const Transform* transform) {
-
-	glm::mat4 modelMatrix = glm::mat4(1.0f);
-
-	modelMatrix = glm::translate(modelMatrix, transform->position);
-	modelMatrix *= glm::mat4_cast(transform->rotation);
-	modelMatrix = glm::scale(modelMatrix, transform->scale);
-
-
-
-	for (size_t i = 0; i < meshes[id].surfaces.size(); i++) {
-		GeoSurface* s = &meshes[id].surfaces[i];
-		Renderable def;
-		def.indexCount = s->count;
-		def.firstIndex = s->startIndex;
-		def.indexBuffer = meshes[id].indexOffset;
-		def.materialID = s->materialID;
-		def.vertexBuffer = meshes[id].vertexOffset;
-		def.transform = modelMatrix;
-
-		mainDrawCtx.surfaces.push_back(def);
-	}
+	_mainDrawContext.add_mesh(&meshes[id], transform);
 }
 
 void
 VulkanEngine::draw_wireframe(std::vector<glm::vec3>& vertices,
 	std::vector<uint32_t>& indices) {
-	for (size_t i = 0; i < indices.size(); i++) {
-		mainDrawCtx.wireframeData.indices.push_back(indices[i] + 
-			mainDrawCtx.wireframeData.vertexCount);
-	}
-	for (size_t i = 0; i < vertices.size(); i++) {
-		mainDrawCtx.wireframeData.vertices.push_back(Vertex{
-			.position = vertices[i],
-			.color = glm::vec4(1, 0, 1, 1)
-		});
-		mainDrawCtx.wireframeData.vertexCount++;
-	}
+	// NOT IMPLEMENTED IN VK_CONTEXT.CPP
 }
 
 // Adds 'text' at position 'x', 'y' to the main draw context.
 // @TODO -> Right now, only renders with defaultFont... allow
 //			passing a fontAtlas id for custom fonts.
 void
-VulkanEngine::draw_text(const char* text, float x, float y) {
-	uint32_t charsDrawn;
-	charsDrawn = defaultFont.draw(text, x, y, mainDrawCtx.textData.vertices,
-		mainDrawCtx.textData.indices);
-	mainDrawCtx.textData.charCount += charsDrawn;
+VulkanEngine::draw_text(const char* text, float x, float y, FontAtlas* pAtlas) {
+	_mainDrawContext.add_text(text, { x, y, 1 }, &defaultFont);
 }
 
 // Creates a shader to be owned by the VulkanEngine.

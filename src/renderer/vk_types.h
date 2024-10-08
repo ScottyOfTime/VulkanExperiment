@@ -10,12 +10,28 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <stdint.h>
 #include <string>
+
+/*---------------------------
+|  FLAGS AND CONSTANTS
+---------------------------*/
 
 // If these go above 64 we get very close to UBO limit
 #define MAX_POINT_LIGHTS	64
 #define MAX_DIR_LIGHTS		64
 #define MAX_SPOT_LIGHTS		64
+
+typedef uint32_t			DebugFlags;
+
+enum DebugFlagBits : uint32_t {
+	DEBUG_FLAGS_ENABLE = 1 << 0,
+	DEBUG_FLAGS_GEOMETRY_WIREFRAME = 1 << 1
+};
+
+/*---------------------------
+|  MISC (YET TO BE ORGANIZED)
+---------------------------*/
 
 struct AllocatedImage {
 	VkImage image;
@@ -28,27 +44,6 @@ struct AllocatedImage {
 struct ImguiLoaderData {
 	VkInstance instance;
 	InstanceDispatch* instanceDispatch;
-};
-
-struct AllocatedBuffer {
-	VkBuffer buffer;
-	VmaAllocation allocation;
-	VmaAllocationInfo info;
-};
-
-struct Vertex {
-	glm::vec3 position;
-	float uv_x;
-	glm::vec3 normal;
-	float uv_y;
-	glm::vec4 color;
-};
-
-struct TextVertex {
-	glm::vec2	pos;
-	glm::vec2	uv;
-	glm::vec3	color;
-	uint32_t	fontDescriptorIndex;
 };
 
 struct GeoSurface {
@@ -72,6 +67,43 @@ struct Material {
 	char padding2[4];
 	glm::vec3 specular;
 	float shininess;
+};
+
+/*---------------------------
+|  VERTEX TYPES (FOR DRAWING DIFFERENT SHAPES/PRIMITIVES)
+---------------------------*/
+
+// This struct is used for textured mesh triangles with normals
+struct Vertex {
+	glm::vec3	position;
+	float		uv_x;
+	glm::vec3	normal;
+	float		uv_y;
+	glm::vec4	color;
+};
+
+// This struct is used for colored triangles with no normal info
+struct TriangleVertex {
+	glm::vec4	color;
+	glm::vec3	position;
+	char		padding[4];
+};
+
+// This struct is used for text
+struct TextVertex {
+	glm::vec3	position;
+	char		padding1[4];
+	glm::vec2	uv;
+	char		padding2[8];
+	glm::vec3	color;
+	uint32_t	fontDescriptorIndex;
+};
+
+// This struct is used for simple line drawing
+struct LineVertex {
+	glm::vec4	color;
+	glm::vec3	position;
+	char		padding[4];
 };
 
 /*---------------------------
@@ -104,7 +136,6 @@ struct DirectionalLight {
 	glm::vec3	specular;
 };
 
-
 struct PointLight {
 	glm::vec3	position;
 	char padding1[4];
@@ -117,7 +148,6 @@ struct PointLight {
 	float		linear;
 	float		quadratic;
 };
-
 
 struct SpotLight {
 	glm::vec3	position;
@@ -136,15 +166,25 @@ struct SpotLight {
 	float		outerCutOff;
 };
 
-struct Renderable {
+struct SurfaceDrawData {
 	uint32_t		indexCount;
 	uint32_t		firstIndex;
-	VkDeviceAddress indexBuffer;
+	VkDeviceAddress indexBufferAddr;
 
 	uint32_t		materialID;
 
-	glm::mat4 transform;
-	VkDeviceAddress vertexBuffer;
+	glm::mat4		transform;
+	VkDeviceAddress vertexBufferAddr;
+};
+
+struct TextDrawDataS {
+	std::vector<TextVertex> vertices;
+	std::vector<uint32_t>	indices;
+};
+
+struct WireframeDrawDataS {
+	std::vector<Vertex>		vertices;
+	std::vector<uint32_t>	indices;
 };
 
 /*---------------------------

@@ -167,7 +167,7 @@ void copy_data_to_image(CopyDataToImageInfo* copyInfo) {
 		fprintf(stderr, "[copy_data_to_image] Failed to wait for command fence.\n");
 	}
 
-	destroy_buffer(copyInfo->allocator, &uploadBuffer);
+	destroy_buffer(&uploadBuffer);
 }
 
 void create_image(ImageCreateInfo* createInfo) {
@@ -279,7 +279,7 @@ void create_image_with_data(ImageCreateInfo* createInfo, void* data,
 	copyInfo.queue = queue;
 	copy_data_to_image(&copyInfo);
 
-	destroy_buffer(createInfo->allocator, &uploadBuffer);
+	destroy_buffer(&uploadBuffer);
 }
 
 void create_image_cube_map(ImageCreateInfo* createInfo, const char* texturePrefix,

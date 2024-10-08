@@ -37,10 +37,7 @@ struct FontAtlas {
 	uint32_t			descriptorIndex;
 	stbtt_packedchar	charInfo[MAX_CHAR];
 
-	uint32_t			load(FontCreateInfo* createInfo);
-	uint32_t			draw(const char* str, float x, float y, 
-							std::vector<TextVertex>& vertices,
-							std::vector<uint32_t>& indices);
+	uint32_t			create(FontCreateInfo* createInfo);
 	GlyphInfo			get_glyph_info(uint32_t c, float offsetX, float offsetY);
 	void				destroy(VkDevice device, DeviceDispatch* deviceDispatch,
 							VmaAllocator allocator);

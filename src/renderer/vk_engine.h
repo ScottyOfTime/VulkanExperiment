@@ -33,6 +33,8 @@
 #include "vk_suballocator.h"
 #include "vk_text.h"
 #include "vk_types.h"
+#include "vk_buffers.h"
+#include "vk_context.h"
 
 /*---------------------------
  | MACROS
@@ -136,28 +138,6 @@ struct FrameData {
 	DeletionQueue deletionQueue;
 };
 
-struct TextRenderData {
-	std::vector<TextVertex>	vertices;
-	std::vector<uint32_t>	indices;
-	uint32_t				charCount = 0;
-};
-
-struct WireframeRenderData {
-	std::vector<Vertex>		vertices;
-	std::vector<uint32_t>	indices;
-	uint32_t				vertexCount = 0;
-};
-
-struct DrawContext {
-	std::vector<struct Renderable>	surfaces;
-	TextRenderData					textData;
-	WireframeRenderData				wireframeData;
-};
-
-struct WireFrameDrawContext {
-	
-};
-
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 /*---------------------------
@@ -166,13 +146,13 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 
 class VulkanEngine {
 public:
+	// TEMPORARY PLEASE MAKE PRIVATE LATER
+	FontAtlas				defaultFont;
 	EngineResult 			init();
 	void 					deinit();
 
 	SDL_Window* 			window;
 	VkExtent2D 				windowExtent{ 1280, 720 };
-
-	EngineResult 			draw();
 	float 					renderScale = 1.f;
 
 	bool 					resizeRequested = false;
@@ -203,20 +183,33 @@ public:
 								std::span<Vertex> vertices, GeoSurface* surfaces,
 								uint32_t surfaceCount, const char* meshName);
 
+	// Main commands
+	void					begin();
+	EngineResult 			draw();
+
+	// Functions to set the state of the renderer
 	void					set_active_camera(Camera c);
-	void					set_debug(uint32_t d);
+
+	void					set_debug_flags(DebugFlags flags);
+	void					clear_debug_flags(DebugFlags flags);
+
+	// Functions to record information for drawing
+	void					draw_line(glm::vec3 from, glm::vec3 to, glm::vec4 color);
+	void					draw_triangle(glm::vec3 vertices[3], glm::vec4 color);
 
 	void					draw_mesh(uint32_t id, const Transform* transform);
 	void					draw_wireframe(std::vector<glm::vec3>& vertices,
 								std::vector<uint32_t>& indices);
-	void					draw_text(const char* text, float x, float y);
-
-	
+	void					draw_text(const char* text, float x, float y,
+								FontAtlas* pAtlas);
 
 private:
 	VmaAllocator 			allocator;
 	DeletionQueue 			mainDeletionQueue;
 
+	/*---------------------------
+	 |  INITIALIZATION FUNCTIONS
+	 ---------------------------*/
 #if defined(VK_USE_PLATFORM_XCB_KHR)
 	void 					*lib;
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -285,17 +278,26 @@ private:
 	VkExtent2D 				drawExtent;
 
 	/*---------------------------
-	 |  DRAW FUNCTIONS
+	 |  RENDER FUNCTIONS
 	 ---------------------------*/
-	EngineResult		 	draw_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
+	EngineResult		 	render_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
 
-	EngineResult			draw_main_pass(VkCommandBuffer cmd);
-	EngineResult 			draw_geometry(VkCommandBuffer cmd);
-	EngineResult			draw_skybox(VkCommandBuffer cmd);
+	// Main pass and its subpasses
+	EngineResult			render_main_pass(VkCommandBuffer cmd);
+	EngineResult 			render_geometry(VkCommandBuffer cmd);
+	EngineResult			render_skybox(VkCommandBuffer cmd);
 
-	EngineResult			draw_wireframes(VkCommandBuffer cmd);
+	// Debug pass and its subpasses
+	EngineResult			render_debug_pass(VkCommandBuffer cmd);
 
-	EngineResult			draw_text_geometry(VkCommandBuffer cmd);
+	// Primitve drawing
+	EngineResult			render_lines(VkCommandBuffer cmd);
+	EngineResult			render_triangles(VkCommandBuffer cmd);
+	EngineResult			render_wireframes(VkCommandBuffer cmd);
+
+
+
+	EngineResult			render_text_geometry(VkCommandBuffer cmd);
 
 	
 
@@ -303,7 +305,7 @@ private:
 	 |  RENDERING OBJECTS & VARIABLES
 	 ---------------------------*/
 	Camera					_activeCamera;
-	uint32_t				_debugFlags;
+	DebugFlags				_debugFlags = 0;
 
 	/*---------------------------
 	 |  THREADS
@@ -371,6 +373,14 @@ private:
 	VkDeviceAddress			textVertexBufferAddr;
 	AllocatedBuffer			textIndexBuffer;
 
+	// Buffer for line rendering
+	AllocatedBuffer			lineVertexBuffer;
+	VkDeviceAddress			lineVertexBufferAddr;
+
+	// Buffer for debug trianlge rendering (mainly used by JoltPhysics debug renderer)
+	AllocatedBuffer			triangleVertexBuffer;
+	VkDeviceAddress			triangleVertexBufferAddr;
+
 	// Buffers for wireframe rendering
 	AllocatedBuffer			wireframeVertexBuffer;
 	VkDeviceAddress			wireframeVertexBufferAddr;
@@ -396,6 +406,12 @@ private:
 	uint32_t				transparentPipeline;
 	EngineResult			init_mesh_pipelines();
 
+	uint32_t				linePipeline;
+	EngineResult			init_line_pipeline();
+
+	uint32_t				trianglePipeline;
+	EngineResult			init_triangle_pipeline();
+
 	uint32_t				wireframePipeline;
 	EngineResult			init_wireframe_pipeline();
 
@@ -408,7 +424,7 @@ private:
 	/*---------------------------
 	 |  DRAW CONTEXTS
 	 ---------------------------*/
-	DrawContext				mainDrawCtx;
+	DrawContext				_mainDrawContext;
 
 	EngineResult 			init_default_data();
 
@@ -420,17 +436,16 @@ private:
 
 	AllocatedImage			containerTexture;
 
-	FontAtlas				defaultFont;
-
 	VkSampler 				defaultSamplerLinear;
 	VkSampler 				defaultSamplerNearest;
 
-	AllocatedBuffer sceneUBO;
+	AllocatedBuffer			sceneUBO;
 
 	// these two values should be equal by end of program, if not
 	// indicates bug
 	uint32_t 				buffersCreated = 0;
 	uint32_t 				buffersDestroyed = 0;
+
 };
 
 #endif /* VK_ENGINE_H */

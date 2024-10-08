@@ -3,6 +3,7 @@
 int main(int argc, char* argv[])
 {
 	Game g;
+	g.init();
 	g.run();
-	g.cleanup();
+	g.deinit();
 }

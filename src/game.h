@@ -3,28 +3,45 @@
 
 #include "renderer/vk_engine.h"
 #include "entity_manager.h"
+#include "physics/phys_main.h"
+#include "state.h"
 
-enum Mode {
-	PLAY,
-	EDIT
-};
+class Game {
+public:
+	void			init();
+	void			deinit();
 
-struct Game {
-	Mode mode = PLAY;
-	uint8_t quit = 0;
+	void			run();
 
-	VulkanEngine vk;
-	EntityManager entityManager;
+	void			transition_state(GameState newState);
 
-	Camera mainCamera = {};
+	float			get_delta_time();
 
-	float deltaTime;
+	void			move_camera(glm::vec3 velocity);
+	void			rotate_camera(float pitch, float yaw);
 
-	void run();
-	void cleanup();
+	// The three horsemen (these may be directly accessed)
+	VulkanEngine	vulkanEngine;
+	EntityManager	entityManager;
+	PhysicsContext	physicsContext;
 
-	void process_input();
-	void camera_movement(const SDL_bool* keyStates);
+private:
+	GameState		_currentState = PLAY;
+	GameStateNode	_states[NUM_GAME_STATES] = {
+		{ PLAY, play_input, play_render, play_start },
+		{ EDIT, edit_input, edit_render, edit_start },
+		{}
+	};
+
+	uint8_t			_quit = 0;
+
+	float			_deltaTime = 0;
+
+	uint32_t		_physicsInitialized;
+
+	Camera			_mainCamera = {
+		.pos = { 0, 0, 0 }
+	};
 };
 
 #endif /* GAME_H */

@@ -5,7 +5,7 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
 
-uint32_t FontAtlas::load(FontCreateInfo* createInfo) {
+uint32_t FontAtlas::create(FontCreateInfo* createInfo) {
 	FILE* fontFile = fopen(createInfo->ttfPath, "rb");
 	if (!fontFile) {
 		ENGINE_ERROR("Failed to load default font.");
@@ -76,44 +76,6 @@ uint32_t FontAtlas::load(FontCreateInfo* createInfo) {
 	free(rgbaAtlas);
 	free(fontBuffer);
 	return 0;
-}
-
-uint32_t FontAtlas::draw(const char* str, float x, float y,
-	std::vector<TextVertex>& vertices, std::vector<uint32_t>& indices) {
-
-	uint32_t vertexOffset = vertices.size(), charCount = 0;
-	float offsetX = x, offsetY = y;
-	for (size_t i = 0; str[i] != '\0'; i++) {
-		char c = str[i];
-		if (c < FIRST_CHAR || c > LAST_CHAR) {
-			continue;
-		}
-
-		GlyphInfo info = get_glyph_info(c, offsetX, offsetY);
-		offsetX = info.offsetX;
-		offsetY = info.offsetY;
-
-		vertices.push_back({ info.positions[0], info.uvs[0], {1, 1, 1}, 
-			descriptorIndex});
-		vertices.push_back({ info.positions[1], info.uvs[1], {1, 1, 1}, 
-			descriptorIndex});
-		vertices.push_back({ info.positions[2], info.uvs[2],
-			{1, 1, 1}, descriptorIndex});
-		vertices.push_back({ info.positions[3], info.uvs[3], {1, 1, 1}, 
-			descriptorIndex});
-
-		indices.push_back(vertexOffset + 0);
-		indices.push_back(vertexOffset + 1);
-		indices.push_back(vertexOffset + 2);
-		indices.push_back(vertexOffset + 0);
-		indices.push_back(vertexOffset + 2);
-		indices.push_back(vertexOffset + 3);
-
-		vertexOffset += 4;
-		charCount++;
-	}
-
-	return charCount;
 }
 
 GlyphInfo FontAtlas::get_glyph_info(uint32_t c, float offsetX, float offsetY) {

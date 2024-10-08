@@ -6,7 +6,7 @@ layout(location = 1) out vec3 outColor;
 layout(location = 2) out uint fontIndex;
 
 struct Vertex {
-	vec2 position;
+	vec3 position;
 	vec2 uv;
 	vec3 color;
 	uint fontIndex;
@@ -39,7 +39,7 @@ void main() {
 
 	// output data
 	vec4 pos = sc.orthoProj * view * 
-		vec4(v.position, 1.0, 1.0f);
+		vec4(v.position, 1.0f);
 	gl_Position = vec4(pos.x, pos.y, 1, pos.w);
 
 	outUV = v.uv;

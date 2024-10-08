@@ -105,6 +105,7 @@ void load_device_dispatch_table(DeviceDispatch *disp, PFN_vkGetInstanceProcAddr 
 	disp->vkCmdSetViewport = (PFN_vkCmdSetViewport)disp->vkGetDeviceProcAddr(dev, "vkCmdSetViewport");
 	disp->vkCmdSetScissor = (PFN_vkCmdSetScissor)disp->vkGetDeviceProcAddr(dev, "vkCmdSetScissor");
 	disp->vkCmdSetLineWidth = (PFN_vkCmdSetLineWidth)disp->vkGetDeviceProcAddr(dev, "vkCmdSetLineWidth");
+	disp->vkCmdSetDepthTestEnable = (PFN_vkCmdSetDepthTestEnable)disp->vkGetDeviceProcAddr(dev, "vkCmdSetDepthTestEnable");
 
 	disp->vkCmdClearAttachments = (PFN_vkCmdClearAttachments)disp->vkGetDeviceProcAddr(dev, "vkCmdClearAttachments");
 
