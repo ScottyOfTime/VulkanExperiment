@@ -8,7 +8,7 @@ set(VULKAN_ENGINE_SRC_FILES
 	vk_images.cpp
 	vk_descriptors.cpp
 	vk_pipelines.cpp
-	vk_loader.cpp
+	vk_gltf.cpp
 	vk_suballocator.cpp
 	vk_text.cpp
 	vk_buffers.cpp

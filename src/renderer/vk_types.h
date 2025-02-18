@@ -22,11 +22,12 @@
 #define MAX_DIR_LIGHTS		64
 #define MAX_SPOT_LIGHTS		64
 
-typedef uint32_t			DebugFlags;
+typedef uint32_t			RenderDebugFlags;
 
-enum DebugFlagBits : uint32_t {
-	DEBUG_FLAGS_ENABLE = 1 << 0,
-	DEBUG_FLAGS_GEOMETRY_WIREFRAME = 1 << 1
+enum RenderDebugFlagBits : uint32_t {
+	RENDER_DEBUG_ENABLE_BIT = 1 << 0,
+	RENDER_DEBUG_GEOMETRY_WIREFRAME_BIT = 1 << 1,
+	RENDER_DEBUG_LIGHTS_BIT = 1 << 2
 };
 
 /*---------------------------
@@ -46,16 +47,16 @@ struct ImguiLoaderData {
 	InstanceDispatch* instanceDispatch;
 };
 
-struct GeoSurface {
+struct Surface {
 	uint32_t startIndex;
 	uint32_t count;
 	uint32_t materialID;
 };
 
-struct MeshAsset {
+struct Mesh {
 	std::string 			name;
-	std::vector<GeoSurface> surfaces;
-	VkDeviceSize			indexOffset;		
+	std::vector<Surface>	surfaces;
+	VkDeviceSize			indexOffset;
 	VkDeviceSize			vertexOffset;
 };
 
@@ -116,54 +117,24 @@ struct Transform {
 	glm::vec3 scale;
 };
 
+enum class LightType : uint32_t {
+	Direction,
+	Point,
+	Spot
+};
+
 struct Light {
 	glm::vec3 position;
-	char padding1[4];
-	glm::vec3 ambient;
-	char padding2[4];
-	glm::vec3 diffuse;
-	char padding3[4];
-	glm::vec3 specular;
-};
-
-struct DirectionalLight {
-	glm::vec3	direction;
-	char padding1[4];
-	glm::vec3	ambient;
-	char padding2[4];
-	glm::vec3	diffuse;
-	char padding3[4];
-	glm::vec3	specular;
-};
-
-struct PointLight {
-	glm::vec3	position;
-	char padding1[4];
-	glm::vec3	ambient;
-	char padding2[4];
-	glm::vec3	diffuse;
-	char padding3[4];
-	glm::vec3	specular;
-	float		constant;
-	float		linear;
-	float		quadratic;
-};
-
-struct SpotLight {
-	glm::vec3	position;
-	char padding1[4];
-	glm::vec3	direction;
-	char padding2[4];
-	glm::vec3	ambient;
-	char padding3[4];
-	glm::vec3	diffuse;
-	char padding4[4];
-	glm::vec3	specular;
-	float		constant;
-	float		linear;
-	float		quadratic;
-	float		cutOff;
-	float		outerCutOff;
+	float constant;
+	glm::vec3 direction;
+	float linear;
+	glm::vec3 color;
+	float quadratic;
+	float innerAngle;
+	float outerAngle;
+	float intensity;
+	LightType type;
+	glm::mat4 spaceMatrix;
 };
 
 struct SurfaceDrawData {
@@ -197,26 +168,25 @@ struct GPUSceneData {
 	glm::mat4		orthoProj;
 };
 
-struct GPULightData {
-	VkDeviceAddress directionalLights;
-	VkDeviceAddress pointLights;
-	VkDeviceAddress spotLights;
-
-	uint32_t numPointLights = 0;
-	uint32_t numDirectionalLights = 0;
-	uint32_t numSpotLights = 0;
-};
-
 struct GPUDrawPushConstants {
 	VkDeviceAddress sceneBuffer;
 	VkDeviceAddress vertexBuffer;
 	VkDeviceAddress	materialBuffer;
 	VkDeviceAddress lightBuffer;
+	uint32_t		lightCount;
 	uint32_t		materialID;
 	// Hopefully something will fill this padding
-	char			padding[12];
+	char			padding[8];
 	glm::mat4		model;
 	glm::vec3		viewPos;
+};
+
+struct GPUShadowPushConstants {
+	glm::mat4		model;
+	glm::mat4		lightSpaceMatrix;
+	VkDeviceAddress vertexBuffer;
+	//VkDeviceAddress lightBuffer; THESE WERE FOR GPU DRIVEN SHADOW MAPPING
+	//uint32_t		lightCount;
 };
 
 

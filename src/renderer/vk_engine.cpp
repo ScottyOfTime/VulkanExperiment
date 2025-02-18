@@ -1,6 +1,7 @@
 #include "vk_engine.h"
 
 #include "vk_images.h"
+#include "vk_gltf.h"
 
 #define VMA_IMPLEMENTATION
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
@@ -28,7 +29,7 @@
 EngineResult 
 VulkanEngine::init() {
 	// Create SDL window
-	if (SDL_Init(SDL_INIT_VIDEO) != SDL_TRUE) {
+	if (SDL_Init(SDL_INIT_VIDEO) != true) {
 		ENGINE_ERROR("Could not initialize SDL");
 		fprintf(stderr, "\tSDL Error: %s\n", SDL_GetError());
 		return ENGINE_FAILURE;
@@ -84,6 +85,7 @@ VulkanEngine::init() {
 
 	// Begin the shader monitor thread (passing 'this' seems suspect)
 	shaderMonitorThread = std::thread(&VulkanEngine::shader_monitor_thread, this);
+	_mainDrawContext.init(shadowMapAtlas.imageExtent.width, 4);
 
 	return ENGINE_SUCCESS;
 }
@@ -524,7 +526,7 @@ VulkanEngine::create_device() {
 
 EngineResult
 VulkanEngine::create_surface() {
-	if (SDL_Vulkan_CreateSurface(window, instance, NULL, &surface) != SDL_TRUE) {
+	if (SDL_Vulkan_CreateSurface(window, instance, NULL, &surface) != true) {
 		ENGINE_ERROR("Unable to create Vulkan surface from SDL window.");
 		return ENGINE_FAILURE;
 	}
@@ -729,12 +731,34 @@ VulkanEngine::init_swapchain() {
 	VK_RUN_FN(deviceDispatch.vkCreateImageView(device, &dviewInfo, nullptr, &depthImage.imageView),
 		"Failed to create depth image view");
 
+	// shadow map
+	VkExtent3D depthImageExtent = {
+		.width = 2048,
+		.height = 2048,
+		.depth = 1
+	};
+	shadowMapAtlas.imageFormat = VK_FORMAT_D32_SFLOAT;
+	shadowMapAtlas.imageExtent = depthImageExtent;
+
+	ImageCreateInfo info;
+	info.allocator = allocator;
+	info.device = device;
+	info.pDeviceDispatch = &deviceDispatch;
+	info.pImg = &shadowMapAtlas;
+	info.size = shadowMapAtlas.imageExtent;
+	info.format = shadowMapAtlas.imageFormat;
+	info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+		VK_IMAGE_USAGE_SAMPLED_BIT;
+	create_image(&info);
+
 	mainDeletionQueue.push_function("vkDestroyImageView & vmaDestroyImage for draw and depth images", [=]() {
 		deviceDispatch.vkDestroyImageView(device, drawImage.imageView, nullptr);
 		vmaDestroyImage(allocator, drawImage.image, drawImage.allocation);
 
 		deviceDispatch.vkDestroyImageView(device, depthImage.imageView, nullptr);
 		vmaDestroyImage(allocator, depthImage.image, depthImage.allocation);
+
+		destroy_image(device, &deviceDispatch, allocator, &shadowMapAtlas);
 		});
 
 	return ENGINE_SUCCESS;
@@ -924,6 +948,7 @@ VulkanEngine::init_descriptors() {
 
 EngineResult
 VulkanEngine::init_pipelines() {
+	// I literally have the ENGINE_RUN_FN macro for this purpose...
 	if (init_mesh_pipelines() != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
@@ -937,6 +962,9 @@ VulkanEngine::init_pipelines() {
 		return ENGINE_FAILURE;
 	}
 	if (init_text_pipeline() != ENGINE_SUCCESS) {
+		return ENGINE_FAILURE;
+	}
+	if (init_shadow_pipeline() != ENGINE_SUCCESS) {
 		return ENGINE_FAILURE;
 	}
 	if (init_wireframe_pipeline() != ENGINE_SUCCESS) {
@@ -1005,7 +1033,7 @@ VulkanEngine::init_imgui() {
 	initInfo.PipelineRenderingCreateInfo = ci;
 	
 	ImguiLoaderData loaderData = { .instance = instance, .instanceDispatch = &instanceDispatch };
-	ImGui_ImplVulkan_LoadFunctions(imgui_function_loader, (void*)&loaderData);
+	ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_3, imgui_function_loader, (void*)&loaderData);
 	ImGui_ImplVulkan_Init(&initInfo);
 
 
@@ -1179,7 +1207,7 @@ VulkanEngine::destroy_pipeline(uint32_t idx) {
 EngineResult
 VulkanEngine::init_buffers() {
 	uint32_t res;
-	res = gBuf.create_buffer(device, allocator, GLOBAL_BUFFER_SIZE,
+	res = geometryBuffer.create_buffer(device, allocator, GLOBAL_BUFFER_SIZE,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT |
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -1199,7 +1227,7 @@ VulkanEngine::init_buffers() {
 	 |  VERTEX BUFFERS
 	 ---------------------------*/
 	bufferInfo.allocator = allocator;
-	bufferInfo.allocSize = 128 * 1024;
+	bufferInfo.allocSize = 1 * 1024 * 1024;
 	bufferInfo.flags = 0;
 	bufferInfo.pBuffer = &textVertexBuffer;
 	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
@@ -1244,6 +1272,17 @@ VulkanEngine::init_buffers() {
 	bufferInfo.pBuffer = &wireframeIndexBuffer;
 	create_buffer(&bufferInfo);
 
+	bufferInfo.pBuffer = &lightBuffer;
+	bufferInfo.allocSize = 65536;
+	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	bufferInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	create_buffer(&bufferInfo);
+	addrInfo.buffer = lightBuffer.buffer;
+	lightBufferAddr =
+		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
+
 	/*---------------------------
 	 |  UNIFORM BUFFERS
 	 ---------------------------*/
@@ -1259,41 +1298,6 @@ VulkanEngine::init_buffers() {
 	uSceneDataAddr =
 		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
 
-	// LIGHT BUFFERS
-
-	bufferInfo.pBuffer = &uLightData;
-	bufferInfo.allocSize = sizeof(GPULightData);
-	create_buffer(&bufferInfo);
-	addrInfo.buffer = uLightData.buffer;
-	uLightDataAddr =
-		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
-
-	bufferInfo.pBuffer = &uDirectionalLights;
-	bufferInfo.allocSize = MAX_DIR_LIGHTS * sizeof(DirectionalLight);
-	create_buffer(&bufferInfo);
-	addrInfo.buffer = uDirectionalLights.buffer;
-	uDirectionalLightsAddr =
-		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
-
-	bufferInfo.pBuffer = &uPointLights;
-	bufferInfo.allocSize = MAX_POINT_LIGHTS * sizeof(PointLight);
-	create_buffer(&bufferInfo);
-	addrInfo.buffer = uPointLights.buffer;
-	uPointLightsAddr =
-		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
-
-	bufferInfo.pBuffer = &uSpotLights;
-	bufferInfo.allocSize = MAX_SPOT_LIGHTS * sizeof(SpotLight);
-	create_buffer(&bufferInfo);
-	addrInfo.buffer = uSpotLights.buffer;
-	uSpotLightsAddr =
-		deviceDispatch.vkGetBufferDeviceAddress(device, &addrInfo);
-
-	GPULightData* lightData = (GPULightData*)uLightData.info.pMappedData;
-	lightData->directionalLights = uDirectionalLightsAddr;
-	lightData->pointLights = uPointLightsAddr;
-	lightData->spotLights = uSpotLightsAddr;
-
 	bufferInfo.pBuffer = &uMaterialBuffer;
 	bufferInfo.allocSize = MAX_MATERIALS * sizeof(Material);
 	create_buffer(&bufferInfo);
@@ -1303,13 +1307,10 @@ VulkanEngine::init_buffers() {
 
 	mainDeletionQueue.push_function("destroying base buffers",
 		[&]() {
-			gBuf.destroy_buffer(allocator);
+			geometryBuffer.destroy_buffer(allocator);
+			destroy_buffer(&lightBuffer);
 			destroy_buffer(&triangleVertexBuffer);
 			destroy_buffer(&lineVertexBuffer);
-			destroy_buffer(&uLightData);
-			destroy_buffer(&uPointLights);
-			destroy_buffer(&uDirectionalLights);
-			destroy_buffer(&uSpotLights);
 			destroy_buffer(&textVertexBuffer);
 			destroy_buffer(&textIndexBuffer);
 			destroy_buffer(&wireframeVertexBuffer);
@@ -1532,10 +1533,11 @@ VulkanEngine::init_wireframe_pipeline() {
 
 EngineResult
 VulkanEngine::init_skybox_pipeline() {
-	// Declare push constant buffer range
+	// Skybox shaders only need to know vertex buffer (for the cube)
+	// and the scenebuffer
 	VkPushConstantRange bufferRange{};
 	bufferRange.offset = 0;
-	bufferRange.size = sizeof(GPUDrawPushConstants);
+	bufferRange.size = 2 * sizeof(VkDeviceAddress);
 	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	// Create pipeline layout
@@ -1631,9 +1633,48 @@ VulkanEngine::init_text_pipeline() {
 }
 
 EngineResult
+VulkanEngine::init_shadow_pipeline() {
+	VkPushConstantRange bufferRange = {};
+	bufferRange.offset = 0;
+	bufferRange.size = sizeof(GPUShadowPushConstants);
+	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkPipelineLayoutCreateInfo layoutInfo = {};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutInfo.pNext = nullptr;
+
+	layoutInfo.pPushConstantRanges = &bufferRange;
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pSetLayouts = nullptr;
+	layoutInfo.setLayoutCount = 0;
+
+	VkPipelineLayout layout;
+	VK_RUN_FN(deviceDispatch.vkCreatePipelineLayout(device, &layoutInfo, nullptr,
+		&layout));
+
+	uint32_t vtxShader, fragShader;
+	ENGINE_RUN_FN(create_shader("../../shaders/shadows.vert", EShLangVertex, &vtxShader));
+	ENGINE_RUN_FN(create_shader("../../shaders/shadows.frag", EShLangFragment, &fragShader));
+
+	PipelineBuilder builder;
+
+	builder.set_layout(layout);
+	builder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	builder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	builder.set_multisampling_none();
+	builder.disable_blending();
+	builder.enable_depthtest(true, VK_COMPARE_OP_LESS_OR_EQUAL);
+	builder.set_depth_format(shadowMapAtlas.imageFormat);
+
+	create_pipeline(&builder, vtxShader, fragShader, &shadowPipeline);
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult
 VulkanEngine::init_default_data() {
 	// load example gltf meshes
-	loadGltfMeshes(this, "../../assets/basicmesh.glb");
+	load_gltf_meshes(this, "../../assets/basicmesh.glb");
 
 	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
 	// checkerboard image
@@ -1724,6 +1765,15 @@ VulkanEngine::init_default_data() {
 	defaultFont.descriptorIndex = idx;
 
 
+	bindlessDescriptorWriter.write_image(
+		0,
+		shadowMapAtlas.imageView,
+		defaultSamplerLinear,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+	);
+
+
 	bindlessDescriptorWriter.update_set(device, bindlessDescriptorSet,
 		&deviceDispatch);
 
@@ -1735,30 +1785,6 @@ VulkanEngine::init_default_data() {
 	};
 	uint32_t copperIdx;
 	create_material(&copper, &copperIdx);
-
-	directionalLights.push_back(DirectionalLight{
-		.direction = glm::vec3(0.5f, -1.f, 0.5f),
-		.ambient = glm::vec3(0.1f, 0.1f, 0.1f),
-		.diffuse = glm::vec3(0.3f, 0.1f, 0.1f),
-		.specular = glm::vec3(1.f, 1.f, 1.f)
-		});
-	pointLights.push_back(PointLight{
-		.position = glm::vec3(6.f, 3.f, 2.f),
-		.ambient = glm::vec3(0.1f, 0.1f, 0.1f),
-		.diffuse = glm::vec3(1.f, 0.f, 1.f),
-		.specular = glm::vec3(0.5f, 0.5f, 0.5f),
-		.constant = 1.0f,
-		.linear = 0.09f,
-		.quadratic = 0.032f
-		});
-
-	memcpy(uPointLights.info.pMappedData, &pointLights[0],
-		sizeof(PointLight));
-	memcpy(uDirectionalLights.info.pMappedData, &directionalLights[0],
-		sizeof(DirectionalLight));
-	GPULightData* lightData = (GPULightData*)uLightData.info.pMappedData;
-	lightData->numDirectionalLights = 1;
-	lightData->numPointLights = 1;
 
 	mainDeletionQueue.push_function("Default textures and samplers deletion", [&]() {
 		deviceDispatch.vkDestroySampler(device, defaultSamplerLinear, nullptr);
@@ -1787,7 +1813,6 @@ VulkanEngine::begin() {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();
-	_mainDrawContext.clear();
 }
 
 EngineResult
@@ -1842,6 +1867,8 @@ VulkanEngine::draw() {
 
 	transition_image(cmd, depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, &deviceDispatch);
 
+	transition_image(cmd, shadowMapAtlas.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, &deviceDispatch);
+
 	// Write to scene data
 	GPUSceneData* data = (GPUSceneData*)uSceneData.info.pMappedData;
 	sceneData.view = _activeCamera.calcViewMat();
@@ -1857,8 +1884,14 @@ VulkanEngine::draw() {
 	);
 	*data = sceneData;
 
+	// Write to lights buffer
+	Light* lightsData = (Light*)lightBuffer.info.pMappedData;
+	memcpy(lightsData, _mainDrawContext._lights.data(),
+		sizeof(Light) * _mainDrawContext._lights.size());
+
+	render_shadow_pass(cmd);
 	render_main_pass(cmd);
-	if (_debugFlags & DEBUG_FLAGS_ENABLE) {
+	if (_debugFlags & RENDER_DEBUG_ENABLE_BIT) {
 		render_debug_pass(cmd);
 	}
 
@@ -1940,6 +1973,7 @@ VulkanEngine::draw() {
 	}
 
 	frameNumber++;
+	_mainDrawContext.clear();
 	return ENGINE_SUCCESS;
 }
 
@@ -2028,6 +2062,92 @@ VulkanEngine::render_imgui(VkCommandBuffer cmd, VkImageView targetImgView) {
 }
 
 EngineResult
+VulkanEngine::render_shadow_pass(VkCommandBuffer cmd) {
+	VkRenderingAttachmentInfo depthAttachment = {};
+	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	depthAttachment.pNext = nullptr;
+
+	depthAttachment.imageView = shadowMapAtlas.imageView;
+	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depthAttachment.clearValue.depthStencil.depth = 1.f;
+
+	VkRenderingInfo renderInfo = {};
+	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	renderInfo.pNext = nullptr;
+
+	renderInfo.renderArea = VkRect2D{
+		VkOffset2D { 0, 0 },
+		VkExtent2D { shadowMapAtlas.imageExtent.width, shadowMapAtlas.imageExtent.height }
+	};
+	renderInfo.layerCount = 1;
+	renderInfo.colorAttachmentCount = 0;
+	renderInfo.pColorAttachments = nullptr;
+	renderInfo.pDepthAttachment = &depthAttachment;
+	renderInfo.pStencilAttachment = nullptr;
+
+	VkViewport viewport = {};
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	VkRect2D scissor = {};
+
+
+	deviceDispatch.vkCmdBeginRendering(cmd, &renderInfo);
+
+	Pipeline p = pipelines[shadowPipeline];
+
+	deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipeline);
+
+	for (size_t i = 0; i < 1; i++) {
+		/*const ShadowAtlasRegion* region = &_mainDrawContext._shadowAtlasRegions[i];
+		viewport.x = region->offset.x * shadowMapAtlas.imageExtent.width;
+		viewport.y = region->offset.y * shadowMapAtlas.imageExtent.height;
+		viewport.width = region->scale.x * shadowMapAtlas.imageExtent.width;
+		viewport.height = region->scale.y * shadowMapAtlas.imageExtent.height;
+		deviceDispatch.vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+		scissor.offset.x = static_cast<int32_t>(viewport.x);
+		scissor.offset.y = static_cast<int32_t>(viewport.y);
+		scissor.extent = {
+			static_cast<uint32_t >(viewport.width), static_cast<uint32_t>(viewport.height)
+		};
+		deviceDispatch.vkCmdSetScissor(cmd, 0, 1, &scissor);*/
+		viewport.x = 0;
+		viewport.y = 0;
+		viewport.width = shadowMapAtlas.imageExtent.width;
+		viewport.height = shadowMapAtlas.imageExtent.height;
+		deviceDispatch.vkCmdSetViewport(cmd, 0, 1, &viewport);
+		
+		scissor.extent.width = shadowMapAtlas.imageExtent.width;
+		scissor.extent.height = shadowMapAtlas.imageExtent.height;
+		scissor.offset.x = 0;
+		scissor.offset.y = 0;
+		deviceDispatch.vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+		for (size_t j = 0; j < _mainDrawContext._surfaceData.size(); j++) {
+			const SurfaceDrawData* surface = &_mainDrawContext._surfaceData[j];
+
+			deviceDispatch.vkCmdBindIndexBuffer(cmd, geometryBuffer.buffer, surface->indexBufferAddr,
+				VK_INDEX_TYPE_UINT32);
+
+			GPUShadowPushConstants pc;
+			pc.vertexBuffer = geometryBuffer.addr + surface->vertexBufferAddr;
+			pc.model = surface->transform;
+			pc.lightSpaceMatrix = _mainDrawContext._lights[i].spaceMatrix;
+			deviceDispatch.vkCmdPushConstants(cmd, pipelines[shadowPipeline].layout,
+				VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUShadowPushConstants), &pc);
+
+			deviceDispatch.vkCmdDrawIndexed(cmd, surface->indexCount, 1, surface->firstIndex, 0, 0);
+		}
+	}
+	deviceDispatch.vkCmdEndRendering(cmd);
+
+	return ENGINE_SUCCESS;
+}
+
+EngineResult
 VulkanEngine::render_main_pass(VkCommandBuffer cmd) {
 	VkRenderingAttachmentInfo colorAttachment = {};
 	colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -2080,11 +2200,12 @@ VulkanEngine::render_main_pass(VkCommandBuffer cmd) {
 
 	deviceDispatch.vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	//render_geometry(cmd);
+	render_geometry(cmd);
 	render_skybox(cmd);
-	//render_wireframes(cmd);
-	//render_lines(cmd);
-	//render_triangles(cmd);
+	render_wireframes(cmd);
+	render_lines(cmd);
+	render_triangles(cmd);
+	render_text_geometry(cmd);
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 
@@ -2104,25 +2225,21 @@ VulkanEngine::render_geometry(VkCommandBuffer cmd) {
 
 	for (size_t i = 0; i < _mainDrawContext._surfaceData.size(); i++) {
 		const SurfaceDrawData* surface = &_mainDrawContext._surfaceData[i];
-		deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			pipelines[opaquePipeline].pipeline);
-		deviceDispatch.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			pipelines[opaquePipeline].layout, 0, 1, &bindlessDescriptorSet,
-			0, 0);
 
-		deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, surface->indexBufferAddr, 
+		deviceDispatch.vkCmdBindIndexBuffer(cmd, geometryBuffer.buffer, surface->indexBufferAddr, 
 			VK_INDEX_TYPE_UINT32);
 
 		GPUDrawPushConstants pc;
-		pc.vertexBuffer = gBuf.addr + surface->vertexBufferAddr;
+		pc.vertexBuffer = geometryBuffer.addr + surface->vertexBufferAddr;
 		pc.sceneBuffer = uSceneDataAddr;
 		pc.materialBuffer = uMaterialBufferAddr;
-		pc.lightBuffer = uLightDataAddr;
+		pc.lightBuffer = lightBufferAddr;
+		pc.lightCount = _mainDrawContext._lights.size();
 		pc.materialID = surface->materialID;
 		pc.model = surface->transform;
-		pc.viewPos = _activeCamera.pos;
+		pc.viewPos = _activeCamera.position;
 		deviceDispatch.vkCmdPushConstants(cmd, pipelines[opaquePipeline].layout,
-			VK_SHADER_STAGE_ALL_GRAPHICS, 0, sizeof(GPUDrawPushConstants), &p);
+			VK_SHADER_STAGE_ALL_GRAPHICS, 0, sizeof(GPUDrawPushConstants), &pc);
 
 		deviceDispatch.vkCmdDrawIndexed(cmd, surface->indexCount, 1, surface->firstIndex, 0, 0);
 	}
@@ -2147,13 +2264,12 @@ VulkanEngine::render_skybox(VkCommandBuffer cmd) {
 	proj[1][1] *= -1;
 
 	GPUDrawPushConstants pushConstants;
-	pushConstants.vertexBuffer = gBuf.addr + meshes[0].vertexOffset;
+	pushConstants.vertexBuffer = geometryBuffer.addr + meshes[0].vertexOffset;
 	pushConstants.sceneBuffer = uSceneDataAddr;
-	pushConstants.model = glm::mat4(0);
 	deviceDispatch.vkCmdPushConstants(cmd, pipelines[skyboxPipeline].layout,
-		VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+		VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(VkDeviceAddress), &pushConstants);
 
-	deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, meshes[0].indexOffset,
+	deviceDispatch.vkCmdBindIndexBuffer(cmd, geometryBuffer.buffer, meshes[0].indexOffset,
 		VK_INDEX_TYPE_UINT32);
 
 	deviceDispatch.vkCmdDrawIndexed(cmd, meshes[0].surfaces[0].count,
@@ -2185,18 +2301,18 @@ VulkanEngine::render_debug_pass(VkCommandBuffer cmd) {
 	deviceDispatch.vkCmdBeginRendering(cmd, &renderInfo);
 
 	// Render scene geometry wireframe if enabled
-	if (_debugFlags & DEBUG_FLAGS_GEOMETRY_WIREFRAME) {
+	if (_debugFlags & RENDER_DEBUG_GEOMETRY_WIREFRAME_BIT) {
 		Pipeline p = pipelines[wireframePipeline];
 		deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipeline);
 		deviceDispatch.vkCmdSetDepthTestEnable(cmd, VK_FALSE);
 		deviceDispatch.vkCmdSetLineWidth(cmd, 1.f);
 		for (size_t i = 0; i < _mainDrawContext._surfaceData.size(); i++) {
 			const SurfaceDrawData* surface = &_mainDrawContext._surfaceData[i];
-			deviceDispatch.vkCmdBindIndexBuffer(cmd, gBuf.buffer, surface->indexBufferAddr,
+			deviceDispatch.vkCmdBindIndexBuffer(cmd, geometryBuffer.buffer, surface->indexBufferAddr,
 				VK_INDEX_TYPE_UINT32);
 
 			GPUDrawPushConstants pc;
-			pc.vertexBuffer = gBuf.addr + surface->vertexBufferAddr;
+			pc.vertexBuffer = geometryBuffer.addr + surface->vertexBufferAddr;
 			pc.sceneBuffer = uSceneDataAddr;
 			pc.model = surface->transform;
 			deviceDispatch.vkCmdPushConstants(cmd, p.layout, VK_SHADER_STAGE_ALL_GRAPHICS,
@@ -2204,12 +2320,16 @@ VulkanEngine::render_debug_pass(VkCommandBuffer cmd) {
 			deviceDispatch.vkCmdDrawIndexed(cmd, surface->indexCount, 1, surface->firstIndex, 0, 0);
 		}
 	}
+	if (_debugFlags & RENDER_DEBUG_LIGHTS_BIT) {
+
+	}
+
 
 	deviceDispatch.vkCmdEndRendering(cmd);
 
 	if (ImGui::Begin("Renderer Debugging")) {
 		ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0);
-		ImGui::CheckboxFlags("Geometry Wireframe", &_debugFlags, DEBUG_FLAGS_GEOMETRY_WIREFRAME);
+		ImGui::CheckboxFlags("Geometry Wireframe", &_debugFlags, RENDER_DEBUG_GEOMETRY_WIREFRAME_BIT);
 	}
 	ImGui::End();
 
@@ -2361,6 +2481,9 @@ VulkanEngine::render_wireframes(VkCommandBuffer cmd) {
 EngineResult
 VulkanEngine::render_text_geometry(VkCommandBuffer cmd) {
 	// Write text data to buffer
+	if (_mainDrawContext._textData.vertices.size() <= 0) {
+		return ENGINE_SUCCESS;
+	}
 	void* data = (void*)_mainDrawContext._textData.vertices.data();
 	size_t size = sizeof(TextVertex) * _mainDrawContext._textData.vertices.size();
 
@@ -2430,8 +2553,6 @@ VulkanEngine::render_text_geometry(VkCommandBuffer cmd) {
 	deviceDispatch.vkCmdDrawIndexed(cmd, _mainDrawContext._textData.indices.size(),
 		1, 0, 0, 0);
 
-	deviceDispatch.vkCmdEndRendering(cmd);
-
 	return ENGINE_SUCCESS;
 }
 
@@ -2452,69 +2573,51 @@ VulkanEngine::set_active_camera(Camera c) {
 
 // Set the debug flags for rendering debug information
 void
-VulkanEngine::set_debug_flags(DebugFlags flags) {
+VulkanEngine::set_debug_flags(RenderDebugFlags flags) {
 	_debugFlags |= flags;
 }
 
 // Clear debug flags
 void
-VulkanEngine::clear_debug_flags(DebugFlags flags) {
+VulkanEngine::clear_debug_flags(RenderDebugFlags flags) {
 	_debugFlags &= ~flags;
 }
 
-// Upload a mesh to the VulkanEngine (also uploads to gBuf)
+// Takes a partly constructed mesh and uploades it to the geometry buffer
 void 
-VulkanEngine::upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices,
-	GeoSurface* surfaces, uint32_t surfaceCount, const char* meshName) {
+VulkanEngine::upload_mesh(UploadMeshInfo *pUploadInfo) {
+	Mesh newMesh = {};
 
-	MeshAsset newMesh = {};
-	newMesh.name = meshName;
+	const size_t vertexBufferSize = pUploadInfo->vertexCount * sizeof(Vertex);
+	const size_t indexBufferSize = pUploadInfo->indexCount * sizeof(uint32_t);
 
-	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
-	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-
-	for (size_t i = 0; i < surfaceCount; i++) {
-		surfaces[i].materialID = 0;
-		newMesh.surfaces.push_back(surfaces[i]);
+	for (size_t i = 0; i < pUploadInfo->surfaceCount; i++) {
+		Surface adjustedSurface = pUploadInfo->pSurfaces[i];
+		adjustedSurface.materialID = 0;
+		newMesh.surfaces.push_back(adjustedSurface);
 	}
 
-	newMesh.vertexOffset = gBuf.suballocate(vertexBufferSize, 8);
-	newMesh.indexOffset = gBuf.suballocate(indexBufferSize, 8);
+	newMesh.vertexOffset = geometryBuffer.suballocate(vertexBufferSize, 8);
+	newMesh.indexOffset = geometryBuffer.suballocate(indexBufferSize, 8);
 
-	AllocatedBuffer staging;
-	BufferCreateInfo bufferInfo;
-	bufferInfo.allocator = allocator;
-	bufferInfo.pBuffer = &staging;
-	bufferInfo.allocSize = vertexBufferSize + indexBufferSize;
-	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	bufferInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-	create_buffer(&bufferInfo);
+	CopyDataToBufferInfo copyInfo = {};
+	copyInfo.allocator = allocator;
+	copyInfo.buffer = geometryBuffer.buffer;
+	copyInfo.cmdBuf = immCmdBuf;
+	copyInfo.cmdFence = immFence;
+	copyInfo.queue = graphicsQueue;
+	copyInfo.device = device;
+	copyInfo.pDeviceDispatch = &deviceDispatch;
+	copyInfo.dstOffset = newMesh.vertexOffset;
+	copyInfo.srcOffset = 0;
+	copyInfo.pData = pUploadInfo->pVertices;
+	copyInfo.size = vertexBufferSize;
+	copy_data_to_buffer(&copyInfo);
 
-	void* data = staging.info.pMappedData;
-
-	// copy vertex buffer
-	memcpy(data, vertices.data(), vertexBufferSize);
-	// copy index buffer
-	memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
-
-	immediate_submit([&](VkCommandBuffer cmd) {
-		VkBufferCopy vertexCopy{ 0 };
-		vertexCopy.dstOffset = newMesh.vertexOffset;
-		vertexCopy.srcOffset = 0;
-		vertexCopy.size = vertexBufferSize;
-
-		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, gBuf.buffer, 1, &vertexCopy);
-
-		VkBufferCopy indexCopy{ 0 };
-		indexCopy.dstOffset = newMesh.indexOffset;
-		indexCopy.srcOffset = vertexBufferSize;
-		indexCopy.size = indexBufferSize;
-
-		deviceDispatch.vkCmdCopyBuffer(cmd, staging.buffer, gBuf.buffer, 1, &indexCopy);
-		});
-
-	destroy_buffer(&staging);
+	copyInfo.pData = pUploadInfo->pIndices;
+	copyInfo.size = indexBufferSize;
+	copyInfo.dstOffset = newMesh.indexOffset;
+	copy_data_to_buffer(&copyInfo);
 
 	meshes[meshCount++] = newMesh;
 }
@@ -2551,6 +2654,11 @@ VulkanEngine::draw_wireframe(std::vector<glm::vec3>& vertices,
 void
 VulkanEngine::draw_text(const char* text, float x, float y, FontAtlas* pAtlas) {
 	_mainDrawContext.add_text(text, { x, y, 1 }, &defaultFont);
+}
+
+void
+VulkanEngine::add_light(const Light* light) {
+	_mainDrawContext.add_light(light);
 }
 
 // Creates a shader to be owned by the VulkanEngine.

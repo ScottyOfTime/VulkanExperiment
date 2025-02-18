@@ -138,6 +138,17 @@ struct FrameData {
 	DeletionQueue deletionQueue;
 };
 
+struct UploadMeshInfo {
+	Vertex*		pVertices;
+	uint32_t	vertexCount;
+
+	uint32_t*	pIndices;
+	uint32_t	indexCount;
+
+	Surface*	pSurfaces;
+	uint32_t	surfaceCount;
+};
+
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 /*---------------------------
@@ -179,9 +190,8 @@ public:
 								EShLanguage stage, uint32_t* idx);
 	EngineResult			create_material(const Material* material,
 								uint32_t* idx);
-	void		 			upload_mesh(std::span<uint32_t> indices,
-								std::span<Vertex> vertices, GeoSurface* surfaces,
-								uint32_t surfaceCount, const char* meshName);
+
+	void		 			upload_mesh(UploadMeshInfo* pInfo);
 
 	// Main commands
 	void					begin();
@@ -190,8 +200,8 @@ public:
 	// Functions to set the state of the renderer
 	void					set_active_camera(Camera c);
 
-	void					set_debug_flags(DebugFlags flags);
-	void					clear_debug_flags(DebugFlags flags);
+	void					set_debug_flags(RenderDebugFlags flags);
+	void					clear_debug_flags(RenderDebugFlags flags);
 
 	// Functions to record information for drawing
 	void					draw_line(glm::vec3 from, glm::vec3 to, glm::vec4 color);
@@ -202,6 +212,9 @@ public:
 								std::vector<uint32_t>& indices);
 	void					draw_text(const char* text, float x, float y,
 								FontAtlas* pAtlas);
+
+	void					add_light(const Light* light);
+	
 
 private:
 	VmaAllocator 			allocator;
@@ -275,12 +288,16 @@ private:
 	// Draw resources
 	AllocatedImage 			drawImage;
 	AllocatedImage 			depthImage;
+	AllocatedImage			shadowMapAtlas;
 	VkExtent2D 				drawExtent;
 
 	/*---------------------------
 	 |  RENDER FUNCTIONS
 	 ---------------------------*/
 	EngineResult		 	render_imgui(VkCommandBuffer cmd, VkImageView targetImgView);
+
+	// The shadow pass for generating shadows on the scene
+	EngineResult			render_shadow_pass(VkCommandBuffer cmd);
 
 	// Main pass and its subpasses
 	EngineResult			render_main_pass(VkCommandBuffer cmd);
@@ -294,18 +311,19 @@ private:
 	EngineResult			render_lines(VkCommandBuffer cmd);
 	EngineResult			render_triangles(VkCommandBuffer cmd);
 	EngineResult			render_wireframes(VkCommandBuffer cmd);
-
-
-
+	
 	EngineResult			render_text_geometry(VkCommandBuffer cmd);
 
-	
+	/*---------------------------
+	 |  FORWARD+ DATA
+	 ---------------------------*/
+	const uint32_t tileSize = 16;
 
 	/*---------------------------
 	 |  RENDERING OBJECTS & VARIABLES
 	 ---------------------------*/
 	Camera					_activeCamera;
-	DebugFlags				_debugFlags = 0;
+	RenderDebugFlags		_debugFlags = 0;
 
 	/*---------------------------
 	 |  THREADS
@@ -340,33 +358,14 @@ private:
 	void					destroy_pipeline(uint32_t idx);
 
 	// Geometry buffer (device local, must copy data into GPU)
-	VkBufferSuballocator	gBuf;
+	VkBufferSuballocator	geometryBuffer;
 
 	GPUSceneData			sceneData;
 	AllocatedBuffer			uSceneData;
 	VkDeviceAddress			uSceneDataAddr;
 
-	// Lighting
-	GPULightData			lightData;
-	AllocatedBuffer			uLightData;
-	VkDeviceAddress			uLightDataAddr;
-
-	AllocatedBuffer			uDirectionalLights;
-	VkDeviceAddress			uDirectionalLightsAddr;
-
-	AllocatedBuffer			uPointLights;
-	VkDeviceAddress			uPointLightsAddr;
-
-	AllocatedBuffer			uSpotLights;
-	VkDeviceAddress			uSpotLightsAddr;
-
-	// Yummy vectors cos too lazy to implement array functionality
-	std::vector
-		<DirectionalLight>	directionalLights;
-	std::vector
-		<SpotLight>			spotLights = { SpotLight{} };
-	std::vector
-		<PointLight>		pointLights;
+	AllocatedBuffer			lightBuffer;
+	VkDeviceAddress			lightBufferAddr;
 
 	// Buffers for text rendering
 	AllocatedBuffer			textVertexBuffer;
@@ -388,7 +387,7 @@ private:
 	
 	// Renderer owns all meshes loaded/uploaded and are accessed
 	// through index
-	MeshAsset				meshes[MAX_MESHES] = {};
+	Mesh					meshes[MAX_MESHES] = {};
 	uint32_t				meshCount = 0;
 
 	// 
@@ -420,6 +419,9 @@ private:
 	
 	uint32_t				textPipeline;
 	EngineResult			init_text_pipeline();
+
+	uint32_t				shadowPipeline;
+	EngineResult			init_shadow_pipeline();
 
 	/*---------------------------
 	 |  DRAW CONTEXTS

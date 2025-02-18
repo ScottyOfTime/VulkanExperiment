@@ -4,29 +4,33 @@
 #include "vk_types.h"
 
 struct Camera {
-	glm::vec3 pos;
-	glm::vec3 vel;
-
-	float pitch = 0.f;
-	float yaw = 0.f;
+	glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+	glm::quat orientation = { 1.0f, 0.0f, 0.0f, 0.0f };
 
 	glm::mat4 calcViewMat() {
-		glm::mat4 translation = glm::translate(glm::mat4(1.f), pos);
-		glm::mat4 rotation = calcRotationMat();
+		glm::mat4 translation = glm::translate(glm::mat4(1.f), position);
+		glm::mat4 rotation = glm::toMat4(orientation);
 		return glm::inverse(translation * rotation);
 	}
-	glm::mat4 calcRotationMat() {
-		glm::quat pitchRotation = glm::angleAxis(pitch, glm::vec3{ 1.f, 0.f, 0.f });
-		glm::quat yawRotation = glm::angleAxis(yaw, glm::vec3{ 0.f, -1.f, 0.f });
-		return glm::toMat4(yawRotation) * glm::toMat4(pitchRotation);
-	}
+
 	glm::vec3 calcFrontVec() {
-		glm::vec3 front;
-		float xzLen = cos(pitch);
-		front.x = xzLen * cos(yaw);
-		front.y = sin(pitch);
-		front.z = xzLen * sin(-yaw);
-		return front;
+		return orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+	}
+
+	void rotate(float pitch, float yaw) {
+		orientation = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+			orientation;
+		orientation *= glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+	}
+
+	void move(glm::vec3 vec) {
+		position += glm::vec3(glm::toMat4(orientation) *
+			glm::vec4(vec * 0.5f, 0.f));
+	}
+
+	void lookAt(glm::vec3 target) {
+		glm::vec3 dir = glm::normalize(target - position);
+		orientation = glm::quatLookAt(dir, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
 };
 

@@ -3,7 +3,7 @@
 void
 Game::init() {
 	if (vulkanEngine.init() != ENGINE_SUCCESS) {
-		fprintf(stderr, "[Game] Failed to initialize vulkan engine.");
+		fprintf(stderr, "[Game] Failed to initialize vulkan engine.\n");
 		return;
 	}
 	physicsContext.init(&vulkanEngine);
@@ -48,6 +48,17 @@ void Game::run() {
 	entityManager.add_mesh(testCube, 0);
 	entityManager.add_physics_body(testCube, { 1, 1, 1 });
 
+	entity_t testPlayer = entityManager.create_entity();
+	transform = {
+		.position { 0, 5, 0 },
+		.rotation = { 1, 0, 0, 0},
+		.scale = { 0.5, 0.5, 0.5 }
+	};
+	entityManager.add_transform(testPlayer, &transform);
+	entityManager.add_mesh(testPlayer, 0);
+	entityManager.add_player_controller(testPlayer, 1.0f, 1.0f,
+		{ 0.f, 2.f, -1.f });
+
 	while (!_quit) {
 		currentTime = SDL_GetTicks();
 		_deltaTime = (currentTime - prevTime) / 1000.f;
@@ -69,11 +80,11 @@ void Game::run() {
 		}
 
 		const bool* keyState = SDL_GetKeyboardState(NULL);
+
 		_states[_currentState].fpInputRoutine(this, keyState);
 
 		entityManager.system_physics_update(_deltaTime);
 
-		vulkanEngine.set_active_camera(_mainCamera);
 		_states[_currentState].fpRenderRoutine(this);
 
 		if (vulkanEngine.resizeRequested) {
@@ -96,16 +107,4 @@ Game::transition_state(GameState newState) {
 float
 Game::get_delta_time() {
 	return _deltaTime;
-}
-
-void
-Game::move_camera(glm::vec3 velocity) {
-	_mainCamera.pos += glm::vec3(_mainCamera.calcRotationMat() *
-		glm::vec4(velocity * 0.5f, 0.f));
-}
-
-void
-Game::rotate_camera(float pitch, float yaw) {
-	_mainCamera.yaw += yaw;
-	_mainCamera.pitch += pitch;
 }

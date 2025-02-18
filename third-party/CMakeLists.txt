@@ -1,4 +1,4 @@
-add_subdirectory(SDL)
+add_subdirectory(SDL EXCLUDE_FROM_ALL)
 add_subdirectory(VulkanMemoryAllocator)
 add_subdirectory(glslang)
 add_subdirectory(imgui)

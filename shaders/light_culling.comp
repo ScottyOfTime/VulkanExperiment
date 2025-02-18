@@ -1,0 +1,13 @@
+#version 460
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+
+
+layout(buffer_reference, std430) readonly buffer LightBuffer {
+	Light lights[];
+};
+
+layout(push_constant) uniform constants {
+	LightBuffer lightBuffer;
+}

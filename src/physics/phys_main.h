@@ -10,6 +10,9 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Character/Character.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 
@@ -175,17 +178,25 @@ public:
 
 class PhysicsContext {
 public:
-	void	init(VulkanEngine* pVulkanEngine);
-	void	deinit();
+	void								init(VulkanEngine* pVulkanEngine);
+	void								deinit();
 
-	BodyID	add_box(Transform transform, Vec3 extent);
+	Character*							create_character(Vec3 position, float radius, float height);
+
+	BodyID								add_box(Transform transform, Vec3 extent);
 
 	PhysicsSystem* get_physics_system() {
 		return &_physicsSystem;
 	}
 
-	void	update(float dt);
+	void								set_debug_flags(PhysicsDebugFlags flags);
+	void								clear_debug_flags(PhysicsDebugFlags flags);
+
+	void								update(float dt);
 	
+	// This should also probably be private but need direct access for ImGui
+	// drawing in the edit game state
+	PhysicsDebugFlags					_debugFlags;
 private:
 	BodyActivationListenerImpl			_bodyActivationListener;
 	ContactListenerImpl					_contactListener;
@@ -200,7 +211,7 @@ private:
 
 	PhysicsSystem						_physicsSystem;
 	BodyIDVector						_bodyIDs;
-	BodyID								_testSphereID;
+	std::vector<Character*>				_characters;
 
 	float								_accumulator = 0.f;
 };

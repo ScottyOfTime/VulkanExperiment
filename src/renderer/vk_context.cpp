@@ -5,6 +5,25 @@
 #include "vk_text.h"
 
 void
+DrawContext::init(uint32_t shadowAtlasExtent, uint32_t numSupportedLights) {
+	uint32_t shadowMapsPerRow = static_cast<uint32_t>(std::sqrt(numSupportedLights));
+	uint32_t shadowMapGridSize = shadowAtlasExtent / shadowMapsPerRow;
+	_numSupportedLights = numSupportedLights;
+
+	_shadowAtlasRegions.resize(numSupportedLights);
+	for (size_t i = 0; i < numSupportedLights; i++) {
+		uint32_t x = i % shadowMapsPerRow;
+		uint32_t y = i / shadowMapsPerRow;
+
+		_shadowAtlasRegions[i].offset = glm::vec2(
+			x * shadowMapGridSize,
+			y * shadowMapGridSize
+		) / glm::vec2(shadowAtlasExtent);
+		_shadowAtlasRegions[i].scale = glm::vec2(shadowMapGridSize) / glm::vec2(shadowAtlasExtent);
+	}
+}
+
+void
 DrawContext::add_line(glm::vec3 from, glm::vec3 to, glm::vec4 color) {
 	_lineData.push_back(LineVertex{
 		.color = color,
@@ -27,13 +46,13 @@ DrawContext::add_triangle(glm::vec3 vertices[3], glm::vec4 color) {
  }
 
 void
-DrawContext::add_mesh(const MeshAsset* mesh, const Transform* transform) {
+DrawContext::add_mesh(const Mesh* mesh, const Transform* transform) {
 	glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), transform->position);
 	modelMatrix *= glm::mat4_cast(transform->rotation);
 	modelMatrix = glm::scale(modelMatrix, transform->scale);
 
 	for (size_t i = 0; i < mesh->surfaces.size(); i++) {
-		const GeoSurface* surface = &mesh->surfaces[i];
+		const Surface* surface = &mesh->surfaces[i];
 		SurfaceDrawData data;
 		data.indexCount = surface->count;
 		data.firstIndex = surface->startIndex;
@@ -75,6 +94,7 @@ DrawContext::add_text(const char* text, glm::vec3 position, FontAtlas* pAtlas) {
 		_textData.indices.push_back(vertexOffset + 3);
 
 		vertexOffset += 4;
+		offsetX = info.offsetX;
 	}
 }
 
@@ -96,6 +116,36 @@ DrawContext::add_wireframe(std::vector<glm::vec3>& vertices) {
 }
 
 void
+DrawContext::add_light(const Light* light) {
+	if (_lights.size() >= _numSupportedLights) {
+		fprintf(stderr, "[DrawContext] Reached supported number of lights.\n");
+		return;
+	}
+
+	Light newLight = *light;
+	switch (light->type) {
+	case LightType::Direction:
+		float near_plane = 0.5f, far_plane = 20.0f;
+		glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
+		glm::vec3 origin = glm::vec3(0.0f, 0.0f, 0.0f);
+		glm::vec3 lightPosition = origin - light->direction * 15.f;
+		newLight.position = lightPosition;
+
+		glm::vec3 up = glm::abs(glm::dot(light->direction, glm::vec3(0.0f, 1.0f, 0.0f))) > 0.99f ?
+			glm::vec3(0.0f, 0.0f, 1.0f) :
+			glm::vec3(0.0f, 1.0f, 0.0f);
+		glm::mat4 lightView = glm::lookAt(
+			lightPosition,
+			origin,
+			up
+		);
+		glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+		newLight.spaceMatrix = lightSpaceMatrix;
+	}
+	_lights.push_back(newLight);
+}
+
+void
 DrawContext::clear() {
 	_lineData.clear();
 	_triangleData.clear();
@@ -104,4 +154,5 @@ DrawContext::clear() {
 	_textData.indices.clear();
 	_wireframeData.vertices.clear();
 	_wireframeData.indices.clear();
+	_lights.clear();
 }

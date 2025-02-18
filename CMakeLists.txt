@@ -18,6 +18,7 @@ endif()
 set(VULKAN_SDK_VERSION 1.3.290.0)
 
 add_definitions(-D${USE_PLATFORM})
+add_compile_definitions(SDL_DISABLE_OLD_NAMES)
 
 add_subdirectory(third-party)
 

@@ -8,14 +8,17 @@ set(PHYSICS_SRC_FILES
 	physics/phys_debug.cpp
 )
 
+set(ENTITIES_SRC_FILES
+	entities/ent_manager.cpp
+)
+
 set(GAME_SRC_FILES
 	main.cpp
 	game.cpp
-	entity_manager.cpp
 	state.cpp
 )
 
-add_executable(vulkan ${PHYSICS_SRC_FILES} ${GAME_SRC_FILES})
+add_executable(vulkan ${PHYSICS_SRC_FILES} ${GAME_SRC_FILES} ${ENTITIES_SRC_FILES})
 
 target_compile_definitions(vulkan PUBLIC 
     JPH_FLOATING_POINT_EXCEPTIONS_ENABLED=1
@@ -23,17 +26,21 @@ target_compile_definitions(vulkan PUBLIC
     JPH_DEBUG_RENDERER=1 
     JPH_OBJECT_STREAM=1
 	JPH_DEBUG_RENDERER=1
+	CMAKE_DISABLE_FIND_PACKAGE_SDL3=ON
 )
+
 
 if (WIN32)
 	target_include_directories(vulkan PUBLIC
-		C:/devel/SDL/include/
+		# C:/Users/decla/plgr/VulkanExperiment/third-party/SDL/include
+		# C:/devel/SDL/include/
 		C:/devel/JoltPhysics
 		${VULKAN_SDK}/Include
 		${PROJECT_SOURCE_DIR}/third-party/imgui
 	)
-	target_link_libraries(vulkan PRIVATE
+	target_link_libraries(vulkan PUBLIC
 		vulkanengine
+		SDL3::SDL3
 	)
 	if(JOLT_LIBRARY)
 		target_link_libraries(vulkan PRIVATE ${JOLT_LIBRARY})

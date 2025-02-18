@@ -24,11 +24,6 @@ layout(buffer_reference, std430) readonly buffer SceneBuffer{
 layout(push_constant) uniform constants{
 	SceneBuffer sceneBuffer;
 	VertexBuffer vertexBuffer;
-	VertexBuffer DONT_USE;
-	VertexBuffer DONT_USE_LIGHT_BUFFER;
-	uint DONT_USE_EITHER;
-	mat4 model;
-	vec3 viewProj;
 } PushConstants;
 
 void main() {

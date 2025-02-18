@@ -64,6 +64,10 @@ void
 PhysicsContext::deinit() {
 	BodyInterface& bodyInterface = _physicsSystem.GetBodyInterface();
 
+	for (size_t i = 0; i < _characters.size(); i++) {
+		_characters[i]->RemoveFromPhysicsSystem();
+	}
+
 	bodyInterface.RemoveBodies(_bodyIDs.data(), _bodyIDs.size());
 	bodyInterface.DestroyBodies(_bodyIDs.data(), _bodyIDs.size());
 
@@ -75,6 +79,24 @@ PhysicsContext::deinit() {
 
 	delete Factory::sInstance;
 	Factory::sInstance = nullptr;
+}
+
+Character*
+PhysicsContext::create_character(Vec3 position, float radius, float height) {
+	Ref<CharacterSettings> settings = new CharacterSettings();
+	settings->mMaxSlopeAngle = DegreesToRadians(45.0f);
+	settings->mEnhancedInternalEdgeRemoval = Layers::MOVING;
+	settings->mShape = new CapsuleShape(height, radius);
+	settings->mFriction = 0.5f;
+	settings->mSupportingVolume = Plane(Vec3::sAxisY(), 2.f);
+
+	Character* c = new Character(settings, RVec3(0.0f, 5.0f, 0.0f), Quat::sIdentity(),
+		0, &_physicsSystem);
+	// The ECS also accesses this pointer so we have two places
+	// where this pointer will propogate... seems suspicious
+	_characters.push_back(c);
+	c->AddToPhysicsSystem();
+	return c;
 }
 
 BodyID
@@ -99,6 +121,16 @@ PhysicsContext::add_box(Transform transform, Vec3 extent) {
 	return boxID;
 }
 
+void
+PhysicsContext::set_debug_flags(PhysicsDebugFlags flags) {
+	_debugFlags |= flags;
+}
+
+void
+PhysicsContext::clear_debug_flags(PhysicsDebugFlags flags) {
+	_debugFlags &= ~flags;
+}
+
 void 
 PhysicsContext::update(float dt) {
 	_accumulator += dt;
@@ -107,18 +139,20 @@ PhysicsContext::update(float dt) {
 	uint step = 0;
 	++step;
 
-	RVec3 position = bodyInterface.GetCenterOfMassPosition(_testSphereID);
-	Vec3 velocity = bodyInterface.GetLinearVelocity(_testSphereID);
-
 	const int cCollisionSteps = 1;
 
-	BodyManager::DrawSettings drawSettings;
-	drawSettings.mDrawShapeWireframe = true;
-	_physicsSystem.DrawBodies(drawSettings, _pDebugRenderer);
+	if (_debugFlags & PHYSICS_DEBUG_BODY_WIREFRAME_BIT) {
+		BodyManager::DrawSettings drawSettings;
+		drawSettings.mDrawShapeWireframe = true;
+		_physicsSystem.DrawBodies(drawSettings, _pDebugRenderer);
+	}
 
 	while (_accumulator >= TIME_STEP) {
 		_physicsSystem.Update(TIME_STEP, cCollisionSteps,
 			_pTempAllocator, _pJobSystem);
+		for (size_t i = 0; i < _characters.size(); i++) {
+			_characters[i]->PostSimulation(0.05f);
+		}
 		_accumulator -= TIME_STEP;
 	}
 }

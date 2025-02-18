@@ -7,9 +7,14 @@
 
 #include "../renderer/vk_engine.h"
 
-
-
 using namespace JPH;
+
+typedef uint32_t PhysicsDebugFlags;
+
+enum PhysicsDebugFlagBits : uint32_t {
+	PHYSICS_DEBUG_ENABLE_BIT = 1 << 0,
+	PHYSICS_DEBUG_BODY_WIREFRAME_BIT = 1 << 1
+};
 
 class DebugRendererSimpleImpl final : public DebugRendererSimple {
 public:
