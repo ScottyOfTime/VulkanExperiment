@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
+find_package(Vulkan REQUIRED)
+
 project(VulkanExperiment)
 
 set(CMAKE_CXX_STANDARD 23)

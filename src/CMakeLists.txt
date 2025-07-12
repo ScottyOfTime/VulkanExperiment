@@ -1,7 +1,7 @@
 # Build the renderer library first, obviously
 add_subdirectory(renderer) # Builds the vulkanengine library
 
-find_library(JOLT_LIBRARY Jolt PATHS "C:/devel/JoltPhysics/Build/VS2022_CL/Debug")
+find_library(JOLT_LIBRARY Jolt PATHS "${PROJECT_SOURCE_DIR}/third-party/JoltPhysics/Build/VS2022_CL/Debug")
 
 set(PHYSICS_SRC_FILES
 	physics/phys_main.cpp
@@ -32,15 +32,14 @@ target_compile_definitions(vulkan PUBLIC
 
 if (WIN32)
 	target_include_directories(vulkan PUBLIC
-		# C:/Users/decla/plgr/VulkanExperiment/third-party/SDL/include
-		# C:/devel/SDL/include/
-		C:/devel/JoltPhysics
-		${VULKAN_SDK}/Include
+		${Vulkan_INCLUDE_DIRS}
 		${PROJECT_SOURCE_DIR}/third-party/imgui
+		${PROJECT_SOURCE_DIR}/third-party/JoltPhysics
 	)
 	target_link_libraries(vulkan PUBLIC
 		vulkanengine
 		SDL3::SDL3
+		imgui
 	)
 	if(JOLT_LIBRARY)
 		target_link_libraries(vulkan PRIVATE ${JOLT_LIBRARY})

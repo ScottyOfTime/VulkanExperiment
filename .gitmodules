@@ -16,3 +16,6 @@
 [submodule "third-party/glslang"]
 	path = third-party/glslang
 	url = git@github.com:KhronosGroup/glslang.git
+[submodule "third-party/JoltPhysics"]
+	path = third-party/JoltPhysics
+	url = git@github.com:jrouwe/JoltPhysics.git
